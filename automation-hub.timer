@@ -1,0 +1,15 @@
+[Unit]
+Description=Schedule automation hub processes to run periodically
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Timer]
+Persistent=true
+OnBootSec=120
+# Every 15 min
+# OnUnitActiveSec=900
+OnCalendar=*-*-* *:*:15
+Unit=automation-hub.service
+
+[Install]
+WantedBy=timers.target

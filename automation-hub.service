@@ -1,0 +1,9 @@
+[Unit]
+Description=A job to run with a systemd timer
+
+[Service]
+Type=simple
+ExecStart=<path to project>/run_periodic_jobs.py
+
+[Install]
+WantedBy=default.target

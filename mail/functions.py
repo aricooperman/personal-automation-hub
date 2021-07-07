@@ -1,9 +1,14 @@
-import imaplib
-import smtplib, ssl
+import datetime
 import email
+import imaplib
 import re
+import smtplib
+import ssl
 from email.policy import default
-from configuration import mail_configs
+
+from configuration import mail_configs, joplin_configs
+from constants import PDF_MIME_TYPE, PNG_MIME_TYPE
+from enums import MimeType
 
 UID_PATTERN = re.compile(r'\d+ \(UID (?P<uid>\d+) RFC822.*')
 
@@ -79,7 +84,13 @@ def get_subject(msg):
 def get_title_from_subject(s):
     s = re.sub(r"(#[\w\-_]+\s*)", "", s)
     s = re.sub(r"(@[\w\-_]+\s*)", "", s)
-    return s.strip()
+
+    if s and len(s.strip()) > 0:
+        return s.strip()
+    else:
+        title = f"{joplin_configs['default-title-prefix']} - {str(datetime.datetime.now())}"
+        print(f"No title found in '{s}', setting to '{title}'")
+        return title
 
 
 def get_tags_from_subject(s):
@@ -87,30 +98,22 @@ def get_tags_from_subject(s):
     return s
 
 
-def get_notebook_from_subject(subject: str, default_notebook: str) -> str:
-    """
-
-    :rtype: str
-    """
+def get_notebook_from_subject(subject: str) -> str:
     subject = re.search(r"@([\w\-_]+)", subject)
-    nb = subject.group(1) if subject is not None else None
-    return nb if nb is not None else default_notebook
+    return subject.group(1) if subject else None
 
 
-def determine_mail_part_type(part):
-    content_type = part.get_content_type()
-    filename = part.get_filename(failobj="")
-    if filename.endswith(".txt") or filename.endswith(".md") or content_type == "text/plain" or \
-            filename.endswith(".html") or content_type == 'text/html':
-        return "TXT"
-    elif filename.endswith(".pdf") or content_type == "application/pdf":
-        return "PDF"
-    elif filename.endswith(".jpg") or filename.endswith(".jpeg") or content_type == "image/jpeg":
-        return "IMG"
-    elif filename.endswith(".png") or content_type == "image/png":
-        return "IMG"
-    elif filename.endswith(".gif") or content_type == "image/gif":
-        return "IMG"
+def determine_mime_type(filename, content_type):
+    if filename.endswith(".txt") or filename.endswith(".md") or content_type == "text/plain":
+        return MimeType.TEXT
+    elif filename.endswith(".html") or filename.endswith(".htm") or content_type == 'text/html':
+        return MimeType.HTML
+    elif filename.endswith(".pdf") or content_type == PDF_MIME_TYPE:
+        return MimeType.PDF
+    elif filename.endswith(".jpg") or filename.endswith(".jpeg") or content_type == "image/jpeg" \
+            or filename.endswith(".png") or content_type == PNG_MIME_TYPE \
+            or filename.endswith(".gif") or content_type == "image/gif":
+        return MimeType.IMG
     else:
-        print(f"Unhandled attachment content type: {content_type}")
-        return "UNKNOWN"
+        # print(f"Unhandled attachment content type: {content_type}")
+        return MimeType.OTHER

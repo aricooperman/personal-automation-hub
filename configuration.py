@@ -1,14 +1,15 @@
-import sys
 import os
 import yaml
 
-CURR_WD = os.getcwd()
-os.chdir(sys.path[0])
+config_dir = os.path.dirname(__file__)
+config_file_path = os.path.join(config_dir, 'config.yml')
 
-with open("config.yml", "r") as yml_file:
+with open(config_file_path, "r") as yml_file:
     configs = yaml.load(yml_file, Loader=yaml.FullLoader)
     mail_configs = configs['mail']
     joplin_configs = configs['joplin']
     evernote_configs = configs['evernote']
-
-os.chdir(CURR_WD)
+    file_configs = configs['file']
+    todoist_configs = configs['todoist']
+    kindle_configs = configs['kindle']
+    trello_configs = configs['trello']

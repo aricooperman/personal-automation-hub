@@ -4,19 +4,45 @@ mail:
   username: abd@xyz.com
   password: foobar
   imap:
-    server: imap.gmail.com
+    server: <imap server>
     port: 993
   smtp:
-    server: smtp.gmail.com
+    server: <smtp server>
     port: 465
-  archive-folder: archive-folder-name
+  archive-folder: <archive-folder-name>
   archive: true
+  mail-forward:
+    <mailbox 1>: <email to forward to>
+    <mailbox 2>: <email to forward to>
 
 joplin:
   default-title-prefix: New Note
   default-notebook: Inbox
   auto-create-notebook: true
-  auto-sync: true
   mailbox: Joplin
   api-port: 41184
-  api-key: <api-key>
+  api-key: <api key>>
+  auto-sync: false
+  delete-processed: false
+  archive-notebook: <notebook name>
+
+file:
+  archive: <path>
+
+todoist:
+  api-key: <api key>
+  joplin-notebook: Todoist
+
+kindle:
+  joplin-notebook: Kindle
+  email: <Kindle device email>
+
+trello:
+  email: <Trello board email>
+  joplin-notebook: Trello
+
+evernote:
+  enabled: true
+  email: <Evernote email>
+
+
