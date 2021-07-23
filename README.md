@@ -34,17 +34,27 @@ is taken from joplin-mail-gateway
         
 3. Update configuration values
 
-4. Run scripts
+4. Install dependencies into project space
+
+         pip install -r requirements.txt --prefix vendor
+
+5. Run main script
         
-        ./fetch-joplin-mails.py
+        ./run_periodic_jobs.py
         
-8. Add scheduled job via cron or systemctl timers
+6. Add scheduled job via cron or systemctl timers
 
         crontab -e
 
-    Add the following line:
+    Add the following line (for example to run every 15 minutes):
 
-        */5 * * * * <path to project folder>/fetch-joplin-mails.py >> <path to log file> 2>&1           
+        */15 * * * * PYTHONPATH=<path to project>/vendor/lib/python3.9/site-packages python <path to project>/run_periodic_jobs.py >> <path to log file> 2>&1  
+
+   *OR*
+
+   Go to systemd directory and run 
+
+         ./copy_systemd_files.sh
 
 ## Running from a docker container
 

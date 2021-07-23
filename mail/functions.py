@@ -11,19 +11,20 @@ from constants import PDF_MIME_TYPE, PNG_MIME_TYPE
 from enums import MimeType
 
 UID_PATTERN = re.compile(r'\d+ \(UID (?P<uid>\d+) RFC822.*')
+GM_MSGID_PATTERN = re.compile(r'\d+ \(X-GM-MSGID (?P<uid>\d+) RFC822.*')
 
 
 def send_mail(msg, to_addr):
     context = ssl.create_default_context()
     with smtplib.SMTP_SSL(host=mail_configs['smtp']['server'], port=mail_configs['smtp']['port'],
                           context=context) as server:
-        server.login(mail_configs['username'], mail_configs['password'])
-        server.send_message(msg, mail_configs['username'], to_addr)
+        server.login(mail_configs['smtp']['username'], mail_configs['smtp']['password'])
+        server.send_message(msg, mail_configs['smtp']['username'], to_addr)
 
 
-def get_mail_client(mailbox):
-    mail = imaplib.IMAP4_SSL(host=mail_configs['imap']['server'], port=mail_configs['imap']['port'])
-    result, data = mail.login(mail_configs['username'], mail_configs['password'])
+def get_mail_client(host, port, username, password, mailbox):
+    mail = imaplib.IMAP4_SSL(host=host, port=port)
+    result, data = mail.login(username, password)
     if result != 'OK':
         raise RuntimeError(f"Unable to login to mail server: {result} - {data}")
 
@@ -34,24 +35,30 @@ def get_mail_client(mailbox):
     return mail
 
 
-def fetch_mail(mailbox):
+def fetch_mail(host, port, username, password, mailbox):
     messages = {}
 
-    with get_mail_client(mailbox) as mail:
+    with get_mail_client(host, port, username, password, mailbox) as mail:
         resp, items = mail.search(None, 'All')
         if resp != 'OK':
             print(f"Failed to list mailbox {mailbox}: {resp} - {items}")
             return messages
 
         for i in items[0].split():
-            resp, data = mail.fetch(i, '(UID RFC822)')
+            # if host == 'imap.gmail.com':
+            #     id_pattern = GM_MSGID_PATTERN
+            #     fetch_command = '(X-GM-MSGID RFC822)'
+            # else:
+            id_pattern = UID_PATTERN
+            fetch_command = '(UID RFC822)'
+
+            resp, data = mail.fetch(i, fetch_command)
             if resp != 'OK':
                 print(f"Failed to retrieve mail #{i} from mailbox {mailbox}: {resp} - {data}")
                 continue
 
             data_desc, msg_data = data[0]
-            # b'1 (UID 2 RFC822 {934635}'
-            match = UID_PATTERN.match(str(data_desc, 'utf-8'))
+            match = id_pattern.match(str(data_desc, 'utf-8'))
             if match is None:
                 print(f"Could not parse email UID from {data_desc}")
                 continue
@@ -63,17 +70,29 @@ def fetch_mail(mailbox):
     return messages
 
 
-def archive_mail(mailbox, msg_uid):
-    with get_mail_client(mailbox) as mail:
-        result, data = mail.uid('COPY', msg_uid, mail_configs['archive-folder'])
+def archive_mail(host, port, username, password, mailbox, msg_uid, archive_folder):
+    with get_mail_client(host, port, username, password, mailbox) as mail:
+        if archive_folder:
+            result, data = mail.uid('COPY', msg_uid, archive_folder)
+            if result != 'OK':
+                print(f"Failed to copy message to mailbox {archive_folder}: {result} - {data}")
+
+        # if host == 'imap.gmail.com':
+        #     #  Move it to the [Gmail]/Trash folder.
+        #     #  Delete it from the [Gmail]/Trash folder.
+        #     result, data = mail.uid('STORE', msg_uid, '+X-GM-LABELS', r"(\Trash)")
+        #     if result != 'OK':
+        #         print(f"Unable to move GMail email to trash: {result} - {data}")
+        #
+        #     result, data = mail.select(r"(\Trash)")
+        #     if result != 'OK':
+        #         print(f"Unable to select mailbox {mailbox}: {result} - {data}")
+
+        result, data = mail.uid('STORE', msg_uid, '+FLAGS', r'(\Deleted)')
         if result == 'OK':
-            result, data = mail.uid('STORE', msg_uid, '+FLAGS', r'(\Deleted)')
-            if result == 'OK':
-                mail.expunge()
-            else:
-                print(f"Failed to remove email from mailbox {mail_configs['archive-folder']}: {result} - {data}")
+            mail.expunge()
         else:
-            print(f"Failed to copy email to archive folder: {result} - {data}")
+            print(f"Failed to archive email from mailbox {mailbox}: {result} - {data}")
 
 
 def get_subject(msg):

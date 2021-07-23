@@ -7,8 +7,8 @@ RefuseManualStop=no
 Persistent=true
 OnBootSec=120
 # Every 15 min
-# OnUnitActiveSec=900
-OnCalendar=*-*-* *:*:15
+OnUnitActiveSec=15min
+# OnCalendar=*-*-* *:*:15
 Unit=automation-hub.service
 
 [Install]

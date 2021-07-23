@@ -5,11 +5,11 @@ import requests
 from io import StringIO, BytesIO
 
 from constants import PNG_MIME_TYPE, PDF_MIME_TYPE
-from mail import functions
-from file import functions
+from file.functions import get_title_from_filename, get_tags_from_filename, get_last_modified_time_from_filename
 from configuration import joplin_configs
 from enums import MimeType
-from mail.functions import determine_mime_type
+from mail.functions import determine_mime_type, get_subject, get_title_from_subject, get_tags_from_subject, \
+    get_notebook_from_subject
 
 ITEMS_KEY = 'items'
 HAS_MORE_KEY = 'has_more'
@@ -168,7 +168,7 @@ def add_note_tags(note_id, tags):
 
 
 def get_email_body(msg):
-    body_part = msg.get_body()
+    body_part = msg.get_body(preferencelist=('html', 'plain', 'related'))
     content_type = body_part.get_content_type()
     body_content = body_part.get_content()
     return body_content, content_type
@@ -371,35 +371,33 @@ def get_notebook(nb_name, default_on_missing=True, auto_create=joplin_configs['a
 
 
 def add_new_note_from_message(msg):
-    subject = functions.get_subject(msg)
-    title = functions.get_title_from_subject(subject)
-    tags = functions.get_tags_from_subject(subject)
-    notebook_name = functions.get_notebook_from_subject(subject)
+    subject = get_subject(msg)
+    title = get_title_from_subject(subject)
+    tags = get_tags_from_subject(subject)
+    notebook_name = get_notebook_from_subject(subject)
     body, content_type = get_email_body(msg)
     notebook = get_notebook(notebook_name)
-    print(f"Creating new note with name '{title}' in '{notebook['title']}'")
+    # print(f"Creating new note with name '{title}' in '{notebook['title']}'")
     note = create_new_note(title, body, notebook_id=notebook['id'], is_html=(content_type == 'text/html'))
-    print(f"New note created - ID is: {note['id']}")
+    # print(f"New note created - ID is: {note['id']}")
     add_note_tags(note['id'], tags)
     add_attachments_from_msg_parts(note['id'], msg)
 
 
 def add_new_note_from_file(file):
-    print(f"Processing {os.path.abspath(file)}")
-
     file_name = os.path.basename(file)
     if file_name.startswith('.'):
         print(f"Ignoring hidden file {file_name}")
         return False
 
-    title = functions.get_title_from_filename(file_name)
-    tags = functions.get_tags_from_filename(file_name)
-    creation_time = functions.get_last_modified_time_from_filename(file)
+    title = get_title_from_filename(file_name)
+    tags = get_tags_from_filename(file_name)
+    creation_time = get_last_modified_time_from_filename(file)
     notebook = get_default_notebook()
 
-    print(f"Creating new note with name '{file_name}' in '{notebook['title']}'")
+    # print(f"Creating new note with name '{file_name}' in '{notebook['title']}'")
     note = create_new_note(title, "", creation_time=creation_time)
-    print(f"New note created - ID is: {note['id']}")
+    # print(f"New note created - ID is: {note['id']}")
 
     add_note_tags(note['id'], tags)
 
@@ -458,8 +456,8 @@ def move_note(note, nb_name):
 
 def handle_processed_note(note):
     if 'delete-processed' in joplin_configs and joplin_configs['delete-processed']:
-        print("Deleting note")
+        print(" Deleting note")
         delete_note(note)
     elif 'archive-notebook' in joplin_configs and len(joplin_configs['archive-notebook'].strip()) > 0:
-        print("Archiving note")
+        print(" Archiving note")
         move_note(note, joplin_configs['archive-notebook'])
