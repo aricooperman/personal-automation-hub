@@ -441,7 +441,7 @@ def get_resource_file(resource_id):
 
 
 def move_note(note, nb_name):
-    notebook = get_notebook(nb_name, default_on_missing=False, auto_create=False)
+    notebook = get_notebook(nb_name, default_on_missing=False, auto_create=True)
     if not notebook:
         print(f"No notebook found with name {nb_name}")
         return
@@ -461,3 +461,4 @@ def handle_processed_note(note):
     elif 'archive-notebook' in joplin_configs and len(joplin_configs['archive-notebook'].strip()) > 0:
         print(" Archiving note")
         move_note(note, joplin_configs['archive-notebook'])
+    # TODO Add processed tag

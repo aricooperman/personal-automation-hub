@@ -97,6 +97,9 @@ def archive_mail(host, port, username, password, mailbox, msg_uid, archive_folde
 
 def get_subject(msg):
     subject = msg['subject']
+    if not subject:
+        return "[Subject Unknown]"
+
     return subject if len(subject) < 1000 else subject[0:996] + '...'
 
 
