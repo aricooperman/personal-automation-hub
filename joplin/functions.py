@@ -16,17 +16,18 @@ HAS_MORE_KEY = 'has_more'
 
 BASE_URL = f"http://localhost:{joplin_configs['api-port']}"
 
+NOTE_FIELDS = "id,parent_id,title,body,source_url,is_todo,todo_due"
+
 NOTES_API_URL = f"{BASE_URL}/notes"
 NOTES_NOTE_API_URL = NOTES_API_URL + "/{note_id}"
 NOTES_TAGS_API_URL = NOTES_NOTE_API_URL + "/tags"
 NOTES_RESOURCES_API_URL = NOTES_NOTE_API_URL + "/resources?fields=id,title,mime,filename,file_extension,size"
 
 FOLDERS_API_URL = f"{BASE_URL}/folders"
-FOLDERS_NOTES_API_URL = FOLDERS_API_URL + "/{notebook_id}/notes?fields=id,parent_id,title,body,source_url,is_todo," \
-                                          "todo_due "
+FOLDERS_NOTES_API_URL = FOLDERS_API_URL + "/{notebook_id}/notes?fields=" + NOTE_FIELDS
 
 TAGS_API_URL = f"{BASE_URL}/tags"
-TAGS_NOTE_API_URL = TAGS_API_URL + "/{tag_id}/notes"
+TAGS_NOTE_API_URL = TAGS_API_URL + "/{tag_id}/notes?fields=" + NOTE_FIELDS
 
 RESOURCES_API_URL = f"{BASE_URL}/resources"
 RESOURCES_RESOURCE_API_URL = RESOURCES_API_URL + "/{resource_id}"
@@ -370,6 +371,22 @@ def get_notebook(nb_name, default_on_missing=True, auto_create=joplin_configs['a
     return notebook
 
 
+def get_tag(tag_name, auto_create=joplin_configs['auto-create-tag']):
+    if not tag_name or not tag_name.strip():
+        return None
+
+    tag_name_lower = tag_name.lower()
+    tags = get_tags()
+    tag = next((tag for tag in tags if tag['title'].lower() == tag_name_lower), None)
+    if tag is None:
+        if auto_create:
+            tag = create_tag(tag_name)
+        else:
+            return None
+
+    return tag
+
+
 def add_new_note_from_message(msg):
     subject = get_subject(msg)
     title = get_title_from_subject(subject)
@@ -393,7 +410,6 @@ def add_new_note_from_file(file):
     title = get_title_from_filename(file_name)
     tags = get_tags_from_filename(file_name)
     creation_time = get_last_modified_time_from_filename(file)
-    notebook = get_default_notebook()
 
     # print(f"Creating new note with name '{file_name}' in '{notebook['title']}'")
     note = create_new_note(title, "", creation_time=creation_time)
@@ -412,7 +428,7 @@ def sync():
     pass  # TODO
 
 
-def get_notes(notebook):
+def get_notes_in_notebook(notebook):
     if not notebook:
         return []
 
@@ -420,13 +436,21 @@ def get_notes(notebook):
     return notes
 
 
-def get_note_tags(note_id):
-    tags = get_items(NOTES_TAGS_API_URL.format(note_id=note_id))
+def get_notes_with_tag(tag):
+    if not tag:
+        return []
+
+    notes = get_items(TAGS_NOTE_API_URL.format(tag_id=tag['id']))
+    return notes
+
+
+def get_note_tags(note):
+    tags = get_items(NOTES_TAGS_API_URL.format(note_id=note['id']))
     return tags
 
 
-def get_resources(note_id):
-    resources = get_items(NOTES_RESOURCES_API_URL.format(note_id=note_id))
+def get_note_resources(note):
+    resources = get_items(NOTES_RESOURCES_API_URL.format(note_id=note['id']))
     return resources
 
 
@@ -454,11 +478,22 @@ def move_note(note, nb_name):
     return updated_note
 
 
+def tag_note(note, tag_name):
+    tag = get_tag(tag_name, auto_create=True)
+    if not tag:
+        print(f"No tag found with name {tag_name}")
+        return
+
+    note_tag_relation = post_item(TAGS_NOTE_API_URL.format(tag_id=tag['id']), {'id': note['id']})
+    return note_tag_relation
+
+
 def handle_processed_note(note):
     if 'delete-processed' in joplin_configs and joplin_configs['delete-processed']:
         print(" Deleting note")
         delete_note(note)
-    elif 'archive-notebook' in joplin_configs and len(joplin_configs['archive-notebook'].strip()) > 0:
-        print(" Archiving note")
-        move_note(note, joplin_configs['archive-notebook'])
-    # TODO Add processed tag
+    elif 'processed-tag' in joplin_configs and len(joplin_configs['processed-tag'].strip()) > 0:
+        print(" Tagging note as processed")
+        tag_note(note, joplin_configs['processed-tag'])
+    else:
+        raise RuntimeError("Missing Joplin config processed-tag and delete-processed is missing or false")

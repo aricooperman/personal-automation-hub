@@ -5,6 +5,7 @@ Description=A job to run with a systemd timer
 Type=simple
 Environment="PYTHONPATH=_PATH_/vendor/lib/python3.9/site-packages"
 ExecStart=python _PATH_/run_periodic_jobs.py
+TimeoutSec=900
 
 [Install]
 WantedBy=default.target

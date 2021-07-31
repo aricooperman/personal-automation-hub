@@ -31,15 +31,15 @@ file:
 
 todoist:
   api-key: <api key>
-  joplin-notebook: Todoist
+  joplin-tag: Todoist
 
 kindle:
-  joplin-notebook: Kindle
+  joplin-tag: Kindle
   email: <Kindle device email>
 
 trello:
   email: <Trello board email>
-  joplin-notebook: Trello
+  joplin-tag: Trello
 
 evernote:
   enabled: true

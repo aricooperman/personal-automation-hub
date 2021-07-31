@@ -8,8 +8,9 @@ from email.message import EmailMessage
 from configuration import joplin_configs, evernote_configs, mail_configs, file_configs, kindle_configs, todoist_configs, \
     trello_configs
 from file.functions import move_file
-from joplin.functions import sync, get_resources, get_resource_file, handle_processed_note, get_notes, get_notebook, \
-    add_new_note_from_file, add_new_note_from_message
+from joplin.functions import sync, get_note_resources, get_resource_file, handle_processed_note, get_notes_in_notebook, \
+    get_notebook, \
+    add_new_note_from_file, add_new_note_from_message, get_tag, get_notes_with_tag, get_note_tags
 from mail.functions import send_mail, archive_mail, get_subject, fetch_mail
 from my_todoist.functions import add_joplin_note_as_task
 
@@ -70,23 +71,23 @@ def process_joplin_directory():
         print(f"Error: Problem processing Joplin file: {str(e)}")
 
 
-def process_joplin_kindle_notebook():
-    print("Processing Kindle notebook in Joplin")
-    notebook = get_notebook(kindle_configs['joplin-notebook'], default_on_missing=False,
-                                      auto_create=False)
-    if not notebook:
-        print(f" Unable to find the Joplin notebook {kindle_configs['joplin-notebook']}")
+def process_joplin_kindle_tag():
+    print("Processing Kindle tag in Joplin")
+    tag = get_tag(kindle_configs['joplin-tag'], auto_create=False)
+    if not tag:
+        print(f" Unable to find the Joplin tag {kindle_configs['joplin-tag']}")
         return
 
-    notes = get_notes(notebook)
+    notes = get_notes_with_tag(tag)
     for note in notes:
-        try:
-            print(f" Moving note '{note['title']}'")
+        if is_processed(note):
+            continue
 
+        try:
             msg = EmailMessage()
             msg['Subject'] = note['title']
 
-            resources = get_resources(note['id'])
+            resources = get_note_resources(note)
             for resource in resources:
                 # TODO check supported format
                 file_bytes = get_resource_file(resource['id'])
@@ -101,37 +102,46 @@ def process_joplin_kindle_notebook():
             print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
 
 
-def process_joplin_todoist_notebook():
-    print("Processing Todoist notebook in Joplin")
-    notebook = get_notebook(todoist_configs['joplin-notebook'], default_on_missing=False, auto_create=False)
-    if not notebook:
-        print(f" Unable to find the Joplin notebook {todoist_configs['joplin-notebook']}")
+def is_processed(note):
+    processed_tag_name = joplin_configs['processed-tag'].lower()
+    processed_tag = next((tag for tag in get_note_tags(note) if tag['title'].lower() == processed_tag_name), None)
+    return True if processed_tag else False
+
+
+def process_joplin_todoist_tag():
+    print("Processing Todoist tag in Joplin")
+    tag = get_tag(todoist_configs['joplin-tag'], auto_create=False)
+    if not tag:
+        print(f" Unable to find the Joplin notebook {todoist_configs['joplin-tag']}")
         return
 
-    notes = get_notes(notebook)
+    notes = get_notes_with_tag(tag)
     for note in notes:
-        print(f" Moving note '{note['title']}'")
+        if is_processed(note):
+            continue
+
+        print(f" Copying note '{note['title']}'")
         add_joplin_note_as_task(note)
         handle_processed_note(note)
 
 
-def process_joplin_trello_notebook():
-    print("Processing Trello notebook in Joplin")
-    notebook = get_notebook(trello_configs['joplin-notebook'], default_on_missing=False, auto_create=False)
-    if not notebook:
-        print(f" Unable to find the Joplin notebook {kindle_configs['joplin-notebook']}")
+def process_joplin_trello_tag():
+    print("Processing Trello tag in Joplin")
+    tag = get_tag(trello_configs['joplin-tag'], auto_create=False)
+    if not tag:
+        print(f" Unable to find the Joplin tag {trello_configs['joplin-tag']}")
         return
 
-    notes = get_notes(notebook)
+    notes = get_notes_with_tag(tag)
     for note in notes:
-        try:
-            print("")
-            print(f" Moving note '{note['title']}'")
+        if is_processed(note):
+            continue
 
+        try:
             msg = EmailMessage()
             msg['Subject'] = note['title']
 
-            resources = get_resources(note['id'])
+            resources = get_note_resources(note)
             for resource in resources:
                 file_bytes = get_resource_file(resource['id'])
                 maintype, subtype = resource['mime'].split('/', 1)
@@ -151,9 +161,9 @@ if __name__ == "__main__":
 
     process_joplin_email_mailbox()
     process_joplin_directory()
-    process_joplin_kindle_notebook()
-    process_joplin_todoist_notebook()
-    process_joplin_trello_notebook()
+    process_joplin_kindle_tag()
+    process_joplin_todoist_tag()
+    process_joplin_trello_tag()
 
     if joplin_configs['auto-sync']:
         print("Starting Joplin Sync")

@@ -3,9 +3,11 @@ import re
 from io import BytesIO
 import todoist
 
-from configuration import todoist_configs
+from configuration import todoist_configs, joplin_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
-from joplin.functions import get_note_tags, get_resources, get_resource_file
+from joplin.functions import get_note_tags, get_note_resources, get_resource_file
+
+FILTERED_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
 
 api = todoist.TodoistAPI(todoist_configs['api-key'])
 
@@ -61,7 +63,7 @@ def add_file_comment(task_id, file_bytes, file_name, file_type):
 
 
 def add_joplin_note_as_task(note):
-    print(f"Processing note {note['title']}")
+    print(f" Adding task {note['title']}")
 
     due = None
     if 'todo_due' in note and note['todo_due'] > 0:
@@ -78,10 +80,11 @@ def add_joplin_note_as_task(note):
         comment = note['body']
         comment = re.sub(r'!?\[.*\]\(:/[a-f0-9]+\)', '', comment).strip()
 
-    tags = get_note_tags(note['id'])
-    labels = [tag['title'] for tag in tags]
+    tags = get_note_tags(note)
+    labels = [tag['title'] for tag in tags if tag['title'] not in FILTERED_TAGS]
+    labels.append("Joplin")
     task = add_task(content, comment=comment, due=due, labels=labels)
-    resources = get_resources(note['id'])
+    resources = get_note_resources(note)
     for resource in resources:
         file_bytes = get_resource_file(resource['id'])
         add_file_comment(task['id'], file_bytes, resource['title'], resource['mime'])
