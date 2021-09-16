@@ -31,21 +31,25 @@ def get_label(label_name):
     return label
 
 
-def add_task(content, comment=None, due=None, labels=None):
+def add_task(content, comment=None, due=None, labels=None, project=None):
     if labels is None:
         labels = []
 
     label_ids = []
-    for l in labels:
-        label = get_label(l)
+    for label in labels:
+        label = get_label(label)
         if not label:
-            label = api.labels.add(l.title().replace(' ', ''), color=41)
+            label = api.labels.add(label.title().replace(' ', ''), color=41)
         label_ids.append(label['id'])
 
-    item = api.items.add(content, auto_parse_labels=True, due=due, labels=label_ids)
+    project_id = project['id'] if project else None
+
+    item = api.items.add(content, auto_parse_labels=True, due=due, labels=label_ids, project_id=project_id)
+
     if comment:
         api.notes.add(item.data['id'], comment)
     api.commit()
+
     return item.data
 
 
@@ -82,8 +86,21 @@ def add_joplin_note_as_task(note):
 
     tags = get_note_tags(note)
     labels = [tag['title'] for tag in tags if tag['title'] not in FILTERED_TAGS]
+    projects = [label for label in labels if label.startswith('#')]
+    labels = list(set(labels) - set(projects))
+    if len(projects) > 0:
+        if len(projects) > 1:
+            print(f"  Warning: task {note['title']} has more than one project tag {projects}, using first")
+        proj_name = projects[0][1:]
+        project = next((proj for proj in get_projects() if proj['name'] == proj_name), None)
+        if project is None:
+            print(f"  Creating Todoist project '{proj_name}'")
+            project = api.projects.add(proj_name)
+            api.commit()
+
     labels.append("Joplin")
-    task = add_task(content, comment=comment, due=due, labels=labels)
+    task = add_task(content, comment=comment, due=due, labels=labels, project=project)
+
     resources = get_note_resources(note)
     for resource in resources:
         file_bytes = get_resource_file(resource['id'])
