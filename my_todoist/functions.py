@@ -88,6 +88,7 @@ def add_joplin_note_as_task(note):
     labels = [tag['title'] for tag in tags if tag['title'] not in FILTERED_TAGS]
     projects = [label for label in labels if label.startswith('#')]
     labels = list(set(labels) - set(projects))
+    project = None
     if len(projects) > 0:
         if len(projects) > 1:
             print(f"  Warning: task {note['title']} has more than one project tag {projects}, using first")
