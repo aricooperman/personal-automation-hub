@@ -3,7 +3,7 @@ Description=A job to run with a systemd timer
 
 [Service]
 Type=simple
-Environment="PYTHONPATH=_PATH_/vendor/lib/python3.9/site-packages"
+Environment="PYTHONPATH=_PATH_/vendor"
 ExecStart=python _PATH_/run_periodic_jobs.py
 TimeoutSec=900
 
