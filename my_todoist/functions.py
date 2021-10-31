@@ -47,14 +47,21 @@ def add_task(content, comment=None, due=None, labels=None, project=None):
     item = api.items.add(content, auto_parse_labels=True, due=due, labels=label_ids, project_id=project_id)
 
     if comment:
-        api.notes.add(item.data['id'], comment)
+        api.notes.add(item.data['id'], comment if len(comment) <= 15000 else comment[0:14997] + '...')
+
     api.commit()
 
     return item.data
 
 
 def add_file_comment(task_id, file_bytes, file_name, file_type):
-    # api.uploads.add('example.jpg')
+    # with tempfile.TemporaryDirectory() as tmpdir:
+    #     with open(f"{tmpdir}/{file_name}", mode="wb") as temp_file:
+    #         temp_file.write(file_bytes)
+    #         file_upload = api.uploads.add(temp_file.name)
+    #         api.notes.add(task_id, '', file_attachment=file_upload)
+    #         api.commit()
+
     # call directly so we don't have to write file to disk
     data = {"token": api.token, 'file_name': file_name, 'file_type': file_type}
     url = api.get_api_url() + "uploads/add"
