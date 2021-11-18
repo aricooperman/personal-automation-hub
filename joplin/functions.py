@@ -3,6 +3,7 @@ import os
 import tempfile
 import requests
 from io import StringIO, BytesIO
+from typing import TypedDict, List
 
 from constants import PNG_MIME_TYPE, PDF_MIME_TYPE
 from file.functions import get_title_from_filename, get_tags_from_filename, get_last_modified_time_from_filename
@@ -27,11 +28,28 @@ FOLDERS_API_URL = f"{BASE_URL}/folders"
 FOLDERS_NOTES_API_URL = FOLDERS_API_URL + "/{notebook_id}/notes?fields=" + NOTE_FIELDS
 
 TAGS_API_URL = f"{BASE_URL}/tags"
-TAGS_NOTE_API_URL = TAGS_API_URL + "/{tag_id}/notes?fields=" + NOTE_FIELDS
+TAG_API_URL = TAGS_API_URL + "/{tag_id}"
+TAG_NOTE_API_URL = TAG_API_URL + "/notes?fields=" + NOTE_FIELDS
 
 RESOURCES_API_URL = f"{BASE_URL}/resources"
 RESOURCES_RESOURCE_API_URL = RESOURCES_API_URL + "/{resource_id}"
 RESOURCES_RESOURCE_FILE_API_URL = RESOURCES_RESOURCE_API_URL + "/file"
+
+
+class Tag(TypedDict):
+    id: str
+    parent_id: str
+    title: str
+
+
+class Note(TypedDict):
+    id: str
+    parent_id: str
+    title: str
+    body: str
+    source_url: str
+    is_todo: int
+    todo_due: int
 
 
 def get_default_params():
@@ -94,7 +112,18 @@ def post_item(url, payload, params=None):
 
     response = requests.post(url, json=payload, params=params)
     if response.status_code != requests.codes.ok:
-        raise RuntimeError(f"Received bad status code ({response.status_code} in get response for {response.request}")
+        raise RuntimeError(f"Received bad status code ({response.status_code} in post response for {response.request}")
+    return response.json()
+
+
+def delete_item(url, payload=None, params=None):
+    if params is None:
+        params = get_default_params()
+
+    response = requests.delete(url, json=payload, params=params)
+    if response.status_code != requests.codes.ok:
+        raise RuntimeError(
+            f"Received bad status code ({response.status_code} in delete response for {response.request}")
     return response.json()
 
 
@@ -106,14 +135,6 @@ def update_item(url, payload, params=None):
     if response.status_code != requests.codes.ok:
         raise RuntimeError(f"Received bad status code ({response.status_code} in get response for {response.request}")
     return response.json()
-
-
-def delete_item(url, params=None):
-    if params is None:
-        params = get_default_params()
-
-    response = requests.delete(url, params=params)
-    response.raise_for_status()
 
 
 def create_notebook(notebook_name):
@@ -142,14 +163,27 @@ def create_new_note(title, body, notebook_id=None, is_html=False, creation_time=
     return note
 
 
-def get_tags():
+def get_active_projects() -> List[Tag]:
+    return [t for t in get_tags() if len(t['title']) > 1 and t['title'][0] == '#' and t['title'][1] != '#']
+
+
+def get_inactive_projects() -> List[Tag]:
+    return [t for t in get_tags() if len(t['title']) > 2 and t['title'][0] == '#' and t['title'][1] == '#']
+
+
+def get_tags() -> List[Tag]:
     tags = get_items(TAGS_API_URL)
     return tags
 
 
-def create_tag(tag):
-    tag = post_item(TAGS_API_URL, {'title': tag})
-    return tag
+def create_tag(tag_name: str):
+    tag_name = post_item(TAGS_API_URL, {'title': tag_name})
+    return tag_name
+
+
+def delete_tag(tag: Tag):
+    out = delete_item(TAG_API_URL.format(tag_id=tag['id']))
+    return out
 
 
 def add_note_tags(note_id, tags):
@@ -165,7 +199,7 @@ def add_note_tags(note_id, tags):
                 tag_id = existing_tag['id']
 
             print(f"Adding tag '{tag} to note {note_id}'")
-            post_item(TAGS_NOTE_API_URL.format(tag_id=tag_id), {'id': note_id})
+            post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note_id})
 
 
 def get_email_body(msg):
@@ -428,7 +462,7 @@ def sync():
     pass  # TODO
 
 
-def get_notes_in_notebook(notebook):
+def get_notes_in_notebook(notebook) -> List[Note]:
     if not notebook:
         return []
 
@@ -436,11 +470,11 @@ def get_notes_in_notebook(notebook):
     return notes
 
 
-def get_notes_with_tag(tag):
+def get_notes_with_tag(tag: Tag) -> List[Note]:
     if not tag:
         return []
 
-    notes = get_items(TAGS_NOTE_API_URL.format(tag_id=tag['id']))
+    notes = get_items(TAG_NOTE_API_URL.format(tag_id=tag['id']))
     return notes
 
 
@@ -484,7 +518,7 @@ def tag_note(note, tag_name):
         print(f"No tag found with name {tag_name}")
         return
 
-    note_tag_relation = post_item(TAGS_NOTE_API_URL.format(tag_id=tag['id']), {'id': note['id']})
+    note_tag_relation = post_item(TAG_NOTE_API_URL.format(tag_id=tag['id']), {'id': note['id']})
     return note_tag_relation
 
 

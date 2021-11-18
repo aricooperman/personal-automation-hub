@@ -1,24 +1,35 @@
-import datetime
-import re
 from io import BytesIO
+from typing import List
+
 import todoist
+from todoist.models import Project
 
-from configuration import todoist_configs, joplin_configs
-from constants import LOCAL_TZ, DEFAULT_TZ
-from joplin.functions import get_note_tags, get_note_resources, get_resource_file
-
-FILTERED_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
+from configuration import todoist_configs
 
 api = todoist.TodoistAPI(todoist_configs['api-key'])
+api.sync()
 
 
-def get_projects():
-    api.sync()
+def get_all_projects() -> List[Project]:
     return api.state['projects']
 
 
+def get_active_projects() -> List[Project]:
+    return [proj for proj in get_all_projects()
+            if proj['name'][0] != '.' and not proj['is_archived'] and not proj['is_deleted']]
+
+
+def create_project(proj_name: str) -> Project:
+    project = api.projects.add(proj_name)
+    api.commit()
+    return project
+
+
+def get_project_details(project: Project) -> any:
+    return api.projects.get_data(project['id'])
+
+
 def get_labels():
-    api.sync()
     return api.state['labels']
 
 
@@ -72,54 +83,11 @@ def add_file_comment(task_id, file_bytes, file_name, file_type):
         api.notes.add(task_id, '', file_attachment=file_upload)
         api.commit()
 
-
-def add_joplin_note_as_task(note):
-    print(f" Adding task {note['title']}")
-
-    due = None
-    if 'todo_due' in note and note['todo_due'] > 0:
-        dt = datetime.datetime.fromtimestamp(note['todo_due'] / 1000.0, tz=datetime.timezone.utc)
-        dt_str = dt.astimezone(LOCAL_TZ).strftime('%Y-%m-%dT%H:%M:%S')
-        due = {'date': dt_str, 'timezone': DEFAULT_TZ, 'is_recurring': False, 'lang': 'en'}
-
-    content = note['title']
-    if len(note['source_url']) > 0:
-        content = f"[{content}]({note['source_url']})"
-
-    comment = None
-    if note['body'] and len(note['body']) > 0:
-        comment = note['body']
-        comment = re.sub(r'!?\[.*\]\(:/[a-f0-9]+\)', '', comment).strip()
-
-    tags = get_note_tags(note)
-    labels = [tag['title'] for tag in tags if tag['title'] not in FILTERED_TAGS]
-    projects = [label for label in labels if label.startswith('#')]
-    labels = list(set(labels) - set(projects))
-    project = None
-    if len(projects) > 0:
-        if len(projects) > 1:
-            print(f"  Warning: task {note['title']} has more than one project tag {projects}, using first")
-        proj_name = projects[0][1:]
-        project = next((proj for proj in get_projects() if proj['name'] == proj_name), None)
-        if project is None:
-            print(f"  Creating Todoist project '{proj_name}'")
-            project = api.projects.add(proj_name)
-            api.commit()
-
-    labels.append("Joplin")
-    task = add_task(content, comment=comment, due=due, labels=labels, project=project)
-
-    resources = get_note_resources(note)
-    for resource in resources:
-        file_bytes = get_resource_file(resource['id'])
-        add_file_comment(task['id'], file_bytes, resource['title'], resource['mime'])
-
-
-def add_new_task_from_message(msg):
-    # TODO
-    pass
-
-
-def add_new_task_from_file(file):
-    # TODO
-    pass
+# def add_new_task_from_message(msg):
+#     # TODO
+#     pass
+#
+#
+# def add_new_task_from_file(file):
+#     # TODO
+#     pass
