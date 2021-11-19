@@ -1,25 +1,32 @@
 # ---------- Configuration ---------------
 
+timezone: America/Denver
+
 mail:
-  username: abd@xyz.com
-  password: foobar
-  imap:
-    server: <imap server>
-    port: 993
   smtp:
     server: <smtp server>
     port: 465
-  archive-folder: <archive-folder-name>
+    username: foo@bar.com
+    password: abc123
+  accounts:
+    - name: xyz456
+      username: foo@bar.com
+      password: abc123
+      imap:
+        server: <imap server>
+        port: 993
+      mail-forward:
+        <mailbox 1>: <email to forward to>
+        <mailbox 2>: <email to forward to>
   archive: true
-  mail-forward:
-    <mailbox 1>: <email to forward to>
-    <mailbox 2>: <email to forward to>
 
 joplin:
   default-title-prefix: New Note
   default-notebook: Inbox
   auto-create-notebook: true
+  auto-create-tag: false
   mailbox: Joplin
+  directory: <path to folder>
   api-port: 41184
   api-key: <api key>>
   auto-sync: false
