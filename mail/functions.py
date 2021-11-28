@@ -4,7 +4,9 @@ import imaplib
 import re
 import smtplib
 import ssl
+from email.message import EmailMessage
 from email.policy import default
+from typing import Dict
 
 from configuration import mail_configs, joplin_configs
 from constants import PDF_MIME_TYPE, PNG_MIME_TYPE
@@ -22,7 +24,7 @@ def send_mail(msg, to_addr):
         server.send_message(msg, mail_configs['smtp']['username'], to_addr)
 
 
-def get_mail_client(host, port, username, password, mailbox):
+def get_mail_client(host: str, port: int, username: str, password: str, mailbox: str) -> imaplib.IMAP4_SSL:
     mail = imaplib.IMAP4_SSL(host=host, port=port)
     result, data = mail.login(username, password)
     if result != 'OK':
@@ -35,7 +37,7 @@ def get_mail_client(host, port, username, password, mailbox):
     return mail
 
 
-def fetch_mail(host, port, username, password, mailbox):
+def fetch_mail(host: str, port: int, username: str, password: str, mailbox: str) -> dict[int, EmailMessage]:
     messages = {}
 
     with get_mail_client(host, port, username, password, mailbox) as mail:
@@ -125,7 +127,7 @@ def get_notebook_from_subject(subject: str) -> str:
     return subject.group(1) if subject else None
 
 
-def determine_mime_type(filename, content_type):
+def determine_mime_type(filename: str, content_type: str) -> MimeType:
     if filename.endswith(".txt") or filename.endswith(".md") or content_type == "text/plain":
         return MimeType.TEXT
     elif filename.endswith(".html") or filename.endswith(".htm") or content_type == 'text/html':
@@ -139,3 +141,10 @@ def determine_mime_type(filename, content_type):
     else:
         # print(f"Unhandled attachment content type: {content_type}")
         return MimeType.OTHER
+
+
+def get_email_body(msg: EmailMessage) -> (str, str):
+    body_part = msg.get_body(preferencelist=('html', 'plain', 'related'))
+    content_type = body_part.get_content_type()
+    body_content = body_part.get_content()
+    return body_content, content_type

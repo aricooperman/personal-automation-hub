@@ -5,17 +5,25 @@ import os
 import re
 import traceback
 from email.message import EmailMessage
+from io import BytesIO, StringIO
+
+import dateutil.parser
+import pytz
 
 from configuration import joplin_configs, evernote_configs, mail_configs, file_configs, kindle_configs, \
     todoist_configs, trello_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
 from file.functions import move_file
 from joplin.functions import sync, get_note_resources, get_resource_file, handle_processed_note, \
-    add_new_note_from_file, add_new_note_from_message, get_tag, get_notes_with_tag, get_note_tags
-from my_todoist.functions import get_all_projects, create_project, add_task, add_file_comment
-from mail.functions import fetch_mail, send_mail, archive_mail, get_subject
+    add_new_note_from_file, get_tag, get_notes_with_tag, get_note_tags, is_processed, \
+    get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note
+from mail.functions import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
+    get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
+from my_todoist.functions import get_all_projects, create_project, add_item, add_file_comment, get_label, \
+    get_items_with_label, get_item_notes, get_project, archive_item
 
 FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
+
 
 # def process_todoist_directory():
 #     #TODO
@@ -78,7 +86,7 @@ def forward_mail():
                 print(f"Error: Problem forwarding emails in {mailbox} mailbox: {str(e)}")
 
 
-def process_joplin_email_mailbox():
+def process_joplin_email_mailbox() -> None:
     print("Processing Joplin emails")
 
     for account in mail_configs['accounts']:
@@ -91,7 +99,30 @@ def process_joplin_email_mailbox():
                 print(f"  Moving '{subject}' to Joplin")
 
                 try:
-                    add_new_note_from_message(msg)
+                    subject = get_subject(msg)
+                    title = get_title_from_subject(subject)
+                    tags = get_tags_from_subject(subject)
+                    notebook_name = get_notebook_from_subject(subject)
+                    body, content_type = get_email_body(msg)
+                    notebook = get_notebook(notebook_name)
+
+                    note = create_new_note(title, body, notebook_id=notebook['id'],
+                                           is_html=(content_type == 'text/html'))
+
+                    add_note_tags(note, tags)
+
+                    for part in msg.iter_attachments():
+                        file_name = part.get_filename(failobj="unknown_file_name")
+                        content_type = part.get_content_type()
+                        part_type = determine_mime_type(file_name, content_type)
+                        content = part.get_content()
+                        if isinstance(content, bytes):
+                            with BytesIO(content) as f:
+                                add_attachment(note, file_name, f, part_type)
+                        else:
+                            with StringIO(content) as f:
+                                add_attachment(note, file_name, f, part_type)
+
                     if evernote_configs['enabled']:
                         send_mail(msg, evernote_configs['email'])
                     if mail_configs['archive']:
@@ -165,12 +196,6 @@ def process_joplin_kindle_tag():
             print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
 
 
-def is_processed(note):
-    processed_tag_name = joplin_configs['processed-tag'].lower()
-    processed_tag = next((tag for tag in get_note_tags(note) if tag['title'].lower() == processed_tag_name), None)
-    return True if processed_tag else False
-
-
 def process_joplin_todoist_tag():
     print("Processing Todoist tag in Joplin")
     tag = get_tag(todoist_configs['joplin-tag'], auto_create=False)
@@ -214,8 +239,8 @@ def process_joplin_todoist_tag():
                 print(f"  Creating Todoist project '{proj_name}'")
                 project = create_project(proj_name)
 
-        labels.append("Joplin")
-        task = add_task(content, comment=comment, due=due, labels=labels, project=project)
+        labels.append("From-Joplin")
+        task = add_item(content, comment=comment, due=due, labels=labels, project=project)
 
         resources = get_note_resources(note)
         for resource in resources:
@@ -227,7 +252,7 @@ def process_joplin_todoist_tag():
 
 def process_joplin_trello_tag():
     print("Processing Trello tag in Joplin")
-    tag = get_tag(trello_configs['joplin-tag'], auto_create=False)
+    tag = get_tag(trello_configs['joplin-tag'], auto_create=True)
     if not tag:
         print(f" Unable to find the Joplin tag {trello_configs['joplin-tag']}")
         return
@@ -248,6 +273,7 @@ def process_joplin_trello_tag():
                 msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=resource['title'])
 
             print(f" Sending note to Trello ")
+            # TODO use Trello API
             send_mail(msg, trello_configs['email'])
             handle_processed_note(note)
         except Exception as e:
@@ -255,16 +281,76 @@ def process_joplin_trello_tag():
             print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
 
 
+def process_todoist_joplin_tag():
+    print("Processing Todoist tag in Joplin")
+
+    joplin_service_configs = todoist_configs['service']['joplin']
+    mapping = joplin_service_configs['tag-mapping']
+
+    todoist_label = get_label(mapping[0])
+    items = get_items_with_label(todoist_label)
+
+    items = [i for i in items if not i['checked'] and not i['is_deleted'] and not i['in_history']]
+
+    if len(items) > 0:
+        todoist_joplin_tag = get_tag(mapping[1], auto_create=True)
+        processed_tag = joplin_service_configs['processed-tag']
+        todoist_processed_label = get_label(processed_tag) if processed_tag is not None else None
+
+        if todoist_processed_label is not None:
+            items = [i for i in items if 'labels' not in i or todoist_processed_label['id'] not in i['labels']]
+
+        for item in items:
+            print(f" Copying task '{item['content']}' as note")
+
+            todoist_item_comments = get_item_notes(item)
+            body = item['description'] if 'description' in item and len(item['description']) > 0 else None
+            due = None
+            if 'due' in item and 'date' in item['due']:
+                dt = dateutil.parser.isoparse(item['due']['date'])
+                tz = item['due']['timezone'] if item['due']['timezone'] is not None else DEFAULT_TZ
+                dt = dt.astimezone(pytz.timezone(tz))
+                due = int(dt.strftime('%s')) * 1000
+
+            joplin_note = create_new_note(item['content'], body, notebook_id=None, is_html=True, due_date=due)
+
+            for comment in todoist_item_comments:
+                if comment['file_attachment'] is None:
+                    append_to_note(joplin_note, comment['content'])
+                else:
+                    link = f"[{comment['file_attachment']['file_name']} - {comment['file_attachment']['file_type']}]" \
+                           f"({comment['file_attachment']['file_url']})"
+                    append_to_note(joplin_note, link)
+
+            add_note_tag(joplin_note, todoist_joplin_tag)
+
+            todoist_project = get_project(item['project_id'])
+            joplin_tag = next((t for t in get_tags() if t['title'][1:].lower() == todoist_project['name'].lower()),
+                              None)
+            if joplin_tag is None and todoist_project['name'] != 'Inbox':
+                joplin_tag = create_tag('#' + todoist_project['name'])
+
+            if joplin_tag is not None:
+                add_note_tag(joplin_note, joplin_tag)
+
+            archive_item(item)
+
+
 print("Start: ", str(datetime.datetime.now()))
 print("===============================")
 
+# Mail Handling
 forward_mail()
-
 process_joplin_email_mailbox()
+
+# Joplin Handling
 process_joplin_directory()
 process_joplin_kindle_tag()
 process_joplin_todoist_tag()
 process_joplin_trello_tag()
+
+# Todoist Handling
+process_todoist_joplin_tag()
 
 if joplin_configs['auto-sync']:
     print("Starting Joplin Sync")

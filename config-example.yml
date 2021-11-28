@@ -31,14 +31,18 @@ joplin:
   api-key: <api key>>
   auto-sync: false
   delete-processed: false
-  archive-notebook: <notebook name>
+  processed-tag: <tag name>
 
 file:
   archive: <path>
 
 todoist:
   api-key: <api key>
-  joplin-tag: Todoist
+  joplin-tag: <tag name>
+  service:
+    joplin:
+      tag-mapping: [<from tag name>, <to tag name>]
+      processed-tag: <tag name>
 
 kindle:
   joplin-tag: Kindle

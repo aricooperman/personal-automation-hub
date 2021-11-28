@@ -1,16 +1,15 @@
 import json
 import os
 import tempfile
-import requests
-from io import StringIO, BytesIO
-from typing import TypedDict, List
+from typing import TypedDict, List, Optional, IO
 
-from constants import PNG_MIME_TYPE, PDF_MIME_TYPE
-from file.functions import get_title_from_filename, get_tags_from_filename, get_last_modified_time_from_filename
+import requests
+
 from configuration import joplin_configs
+from constants import PNG_MIME_TYPE, PDF_MIME_TYPE
 from enums import MimeType
-from mail.functions import determine_mime_type, get_subject, get_title_from_subject, get_tags_from_subject, \
-    get_notebook_from_subject
+from file.functions import get_title_from_filename, get_tags_from_filename, get_last_modified_time_from_filename
+from mail.functions import determine_mime_type
 
 ITEMS_KEY = 'items'
 HAS_MORE_KEY = 'has_more'
@@ -36,6 +35,25 @@ RESOURCES_RESOURCE_API_URL = RESOURCES_API_URL + "/{resource_id}"
 RESOURCES_RESOURCE_FILE_API_URL = RESOURCES_RESOURCE_API_URL + "/file"
 
 
+# Types
+# note 	1
+# folder 	2
+# setting 	3
+# resource 	4
+# tag 	5
+# note_tag 	6
+# search 	7
+# alarm 	8
+# master_key 	9
+# item_change 	10
+# note_resource 	11
+# resource_local_state 	12
+# revision 	13
+# migration 	14
+# smart_filter 	15
+# command 	16
+
+
 class Tag(TypedDict):
     id: str
     parent_id: str
@@ -50,6 +68,27 @@ class Note(TypedDict):
     source_url: str
     is_todo: int
     todo_due: int
+
+
+class Resource(TypedDict):
+    id: str
+    title: str
+    mime: str
+    filename: str
+    created_time: int
+    updated_time: int
+    # When the resource was created. It may differ from created_time as it can be manually set by the user.
+    user_created_time: int
+    # When the resource was last updated. It may differ from updated_time as it can be manually set by the user.
+    user_updated_time: int
+    file_extension: str
+    encryption_cipher_text: str
+    encryption_applied: int
+    encryption_blob_encrypted: int
+    size: int
+    is_shared: int
+    share_id: str
+    master_key_id: str
 
 
 def get_default_params():
@@ -144,12 +183,14 @@ def create_notebook(notebook_name):
     return notebook
 
 
-def create_new_note(title, body, notebook_id=None, is_html=False, creation_time=None):
+def create_new_note(title: str, body: str, notebook_id: Optional[int] = None, is_html: bool = False, creation_time=None,
+                    due_date=None) -> Note:
     payload = {'title': title}
-    if is_html:
-        payload['body_html'] = body
-    else:
-        payload['body'] = body
+    if body is not None and len(body) > 0:
+        if is_html:
+            payload['body_html'] = body
+        else:
+            payload['body'] = body
 
     if notebook_id is None:
         notebook = get_default_notebook()
@@ -158,6 +199,10 @@ def create_new_note(title, body, notebook_id=None, is_html=False, creation_time=
 
     if creation_time is not None:
         payload['user_created_time'] = creation_time
+
+    if due_date is not None:
+        payload['is_todo'] = 1
+        payload['todo_due'] = due_date
 
     note = post_item(NOTES_API_URL, payload)
     return note
@@ -176,9 +221,9 @@ def get_tags() -> List[Tag]:
     return tags
 
 
-def create_tag(tag_name: str):
-    tag_name = post_item(TAGS_API_URL, {'title': tag_name})
-    return tag_name
+def create_tag(tag_name: str) -> Tag:
+    tag = post_item(TAGS_API_URL, {'title': tag_name})
+    return tag
 
 
 def delete_tag(tag: Tag):
@@ -186,7 +231,13 @@ def delete_tag(tag: Tag):
     return out
 
 
-def add_note_tags(note_id, tags):
+def add_note_tag(note: Note, tag: Tag) -> None:
+    tag_id = tag['id']
+    print(f"Adding tag '{tag['title']} to note {note['title']}'")
+    post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note['id']})
+
+
+def add_note_tags(note: Note, tags: List[str]) -> None:
     if len(tags) > 0:
         existing_tags = get_tags()
         for tag in tags:
@@ -198,24 +249,17 @@ def add_note_tags(note_id, tags):
             else:
                 tag_id = existing_tag['id']
 
-            print(f"Adding tag '{tag} to note {note_id}'")
-            post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note_id})
+            print(f"Adding tag '{tag} to note {note['title']}'")
+            post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note['id']})
 
 
-def get_email_body(msg):
-    body_part = msg.get_body(preferencelist=('html', 'plain', 'related'))
-    content_type = body_part.get_content_type()
-    body_content = body_part.get_content()
-    return body_content, content_type
-
-
-def add_generic_attachment(note_id, file_name, file_like):
+def add_generic_attachment(note: Note, file_name: str, file_like: IO) -> Resource:
     resource = add_resource(file_name, file_like)
-    append_to_note(note_id, f"[{file_name}](:/{resource['id']})")
+    append_to_note(note, f"[{file_name}](:/{resource['id']})")
     return resource
 
 
-def add_resource(file_name, file_like, mime_type=None):
+def add_resource(file_name: str, file_like: IO, mime_type: str = None) -> Resource:
     file_parts = file_name.split('.')
     ext = file_parts[1] if len(file_parts) > 1 else None
     payload = {'title': file_name, 'filename': file_name, 'file_extension': ext}
@@ -234,7 +278,7 @@ def delete_note(note):
     delete_item(NOTES_NOTE_API_URL.format(note_id=note['id']))
 
 
-def attach_text_to_note(note_id, file_like, is_html=False):
+def attach_text_to_note(note: Note, file_like: IO, is_html: bool = False) -> None:
     text = file_like.read()
     if is_html:
         # Create temporary note to convert html to md consistently
@@ -242,17 +286,17 @@ def attach_text_to_note(note_id, file_like, is_html=False):
         text = note['body']
         delete_note(note['id'])
 
-    append_to_note(note_id, text)
+    append_to_note(note, text)
 
 
-def get_note_body(note_id):
+def get_note_body(note: Note) -> Optional[str]:
     params = get_default_params()
     params['fields'] = 'body'
-    note = get_item(NOTES_NOTE_API_URL.format(note_id=note_id), params=params)
+    note = get_item(NOTES_NOTE_API_URL.format(note_id=note['id']), params=params)
     return note['body'] if note and 'body' in note else None
 
 
-def add_pdf_thumbnail(pdf_file_like):
+def add_pdf_thumbnail(pdf_file_like: IO) -> Resource:
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(f"{tmpdir}/tmp.pdf", mode="wb") as f:
             f.write(pdf_file_like.read())
@@ -271,11 +315,11 @@ def add_pdf_thumbnail(pdf_file_like):
         return resource
 
 
-def set_note_body(note_id, body):
-    update_item(NOTES_NOTE_API_URL.format(note_id=note_id), {'body': body})
+def set_note_body(note: Note, body: str) -> None:
+    update_item(NOTES_NOTE_API_URL.format(note_id=note['id']), {'body': body})
 
 
-def append_to_note(note_id, text):
+def append_to_note(note: Note, text: str) -> None:
     if not text:
         return
 
@@ -285,20 +329,20 @@ def append_to_note(note_id, text):
     if len(text.strip()) == 0:
         return
 
-    orig_body = get_note_body(note_id)
+    orig_body = get_note_body(note)
     if orig_body is not None and len(orig_body.strip()) > 0:
         orig_body += '\n\n---\n\n'
     orig_body += text
-    set_note_body(note_id, orig_body)
+    set_note_body(note, orig_body)
 
 
-def add_pdf_attachment(note_id, file_name, file_like):
+def add_pdf_attachment(note: Note, file_name: str, file_like: IO) -> None:
     thumbnail = add_pdf_thumbnail(file_like)
     file_like.seek(0)
     resource = add_resource(file_name, file_like, PDF_MIME_TYPE)
     file_like.seek(0)
     pdf_text = get_pdf_full_text(file_like)
-    append_to_note(note_id, f"[![{file_name}](:/{thumbnail['id']})](:/{resource['id']})\n\n{pdf_text}")
+    append_to_note(note, f"[![{file_name}](:/{thumbnail['id']})](:/{resource['id']})\n\n{pdf_text}")
 
 
 def add_img_attachment(note_id, file_name, file_like):
@@ -311,36 +355,22 @@ def add_img_attachment(note_id, file_name, file_like):
     append_to_note(note_id, body)
 
 
-def add_attachment(note_id, file_name, file_like, mime_type):
+def add_attachment(note: Note, file_name: str, file_like: IO, mime_type: MimeType):
     if mime_type == MimeType.TEXT:
-        attach_text_to_note(note_id, file_like, False)
+        attach_text_to_note(note, file_like, False)
     elif mime_type == MimeType.HTML:
-        attach_text_to_note(note_id, file_like, True)
+        attach_text_to_note(note, file_like, True)
     elif mime_type == MimeType.PDF:
-        add_pdf_attachment(note_id, file_name, file_like)
+        add_pdf_attachment(note, file_name, file_like)
     elif mime_type == MimeType.IMG:
-        add_img_attachment(note_id, file_name, file_like)
+        add_img_attachment(note, file_name, file_like)
     elif mime_type == MimeType.OTHER:
-        add_generic_attachment(note_id, file_name, file_like)
+        add_generic_attachment(note, file_name, file_like)
     else:
         print(f"Unhandled file type {mime_type}")
 
 
-def add_attachments_from_msg_parts(note_id, msg):
-    for part in msg.iter_attachments():
-        file_name = part.get_filename(failobj="unknown_file_name")
-        content_type = part.get_content_type()
-        part_type = determine_mime_type(file_name, content_type)
-        content = part.get_content()
-        if isinstance(content, bytes):
-            with BytesIO(content) as f:
-                add_attachment(note_id, file_name, f, part_type)
-        else:
-            with StringIO(content) as f:
-                add_attachment(note_id, file_name, f, part_type)
-
-
-def get_pdf_full_text(pdf_file_like):
+def get_pdf_full_text(pdf_file_like: IO) -> str:
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_file_name = f"{tmpdir}/tmp.pdf"
         with open(tmp_file_name, mode="wb") as pdf_file:
@@ -421,20 +451,6 @@ def get_tag(tag_name, auto_create=joplin_configs['auto-create-tag']):
     return tag
 
 
-def add_new_note_from_message(msg):
-    subject = get_subject(msg)
-    title = get_title_from_subject(subject)
-    tags = get_tags_from_subject(subject)
-    notebook_name = get_notebook_from_subject(subject)
-    body, content_type = get_email_body(msg)
-    notebook = get_notebook(notebook_name)
-    # print(f"Creating new note with name '{title}' in '{notebook['title']}'")
-    note = create_new_note(title, body, notebook_id=notebook['id'], is_html=(content_type == 'text/html'))
-    # print(f"New note created - ID is: {note['id']}")
-    add_note_tags(note['id'], tags)
-    add_attachments_from_msg_parts(note['id'], msg)
-
-
 def add_new_note_from_file(file):
     file_name = os.path.basename(file)
     if file_name.startswith('.'):
@@ -445,17 +461,15 @@ def add_new_note_from_file(file):
     tags = get_tags_from_filename(file_name)
     creation_time = get_last_modified_time_from_filename(file)
 
-    # print(f"Creating new note with name '{file_name}' in '{notebook['title']}'")
     note = create_new_note(title, "", creation_time=creation_time)
-    # print(f"New note created - ID is: {note['id']}")
 
-    add_note_tags(note['id'], tags)
+    add_note_tags(note, tags)
 
     import mimetypes
     content_type = mimetypes.MimeTypes().guess_type(file)[0]
     file_type = determine_mime_type(file_name, content_type)
     with open(file, "rb") as f:
-        add_attachment(note['id'], file_name, f, file_type)
+        add_attachment(note, file_name, f, file_type)
 
 
 def sync():
@@ -531,3 +545,9 @@ def handle_processed_note(note):
         tag_note(note, joplin_configs['processed-tag'])
     else:
         raise RuntimeError("Missing Joplin config processed-tag and delete-processed is missing or false")
+
+
+def is_processed(note):
+    processed_tag_name = joplin_configs['processed-tag'].lower()
+    processed_tag = next((tag for tag in get_note_tags(note) if tag['title'].lower() == processed_tag_name), None)
+    return True if processed_tag else False
