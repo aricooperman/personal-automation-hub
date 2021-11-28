@@ -1,14 +1,18 @@
 from io import BytesIO
-from typing import List, Optional
+from typing import List, Optional, TypedDict
 
 import todoist
 from todoist.models import Project, Label, Item, Note
 
 from configuration import todoist_configs
 
+class ItemDetail(TypedDict):
+    item: dict
+    notes: list[dict]
+    project: dict
+
 api = todoist.TodoistAPI(todoist_configs['api-key'])
 api.sync()
-
 
 def get_all_projects() -> List[Project]:
     return api.state['projects']
@@ -29,8 +33,8 @@ def create_project(proj_name: str) -> Project:
     return project
 
 
-def get_project_details(project: Project) -> dict:
-    return api.projects.get_data(project['id'])
+def get_project_details(project_id: int) -> dict:
+    return api.projects.get_data(project_id)
 
 
 def get_labels():
@@ -82,6 +86,10 @@ def archive_item(item: Item) -> None:
 def get_item_notes(item: Item) -> List[Note]:
     notes = [note for note in api.state['notes'] if note['item_id'] == item['id'] and not note['is_deleted']]
     return notes
+
+
+def get_item_detail(item_id: int) -> ItemDetail:
+    return api.items.get(item_id)
 
 
 def add_file_comment(task_id, file_bytes, file_name, file_type):

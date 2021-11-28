@@ -9,6 +9,7 @@ from io import BytesIO, StringIO
 
 import dateutil.parser
 import pytz
+from todoist.models import Note
 
 from configuration import joplin_configs, evernote_configs, mail_configs, file_configs, kindle_configs, \
     todoist_configs, trello_configs
@@ -20,7 +21,7 @@ from joplin.functions import sync, get_note_resources, get_resource_file, handle
 from mail.functions import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
     get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
 from my_todoist.functions import get_all_projects, create_project, add_item, add_file_comment, get_label, \
-    get_items_with_label, get_item_notes, get_project, archive_item
+    get_items_with_label, get_item_notes, get_project, archive_item, get_item_detail, get_project_details
 
 FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
 
@@ -281,6 +282,15 @@ def process_joplin_trello_tag():
             print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
 
 
+def get_todoist_note_text(note):
+    if note['file_attachment'] is None:
+        return note['content']
+    else:
+        link = f"[{note['file_attachment']['file_name']} - {note['file_attachment']['file_type']}]" \
+               f"({note['file_attachment']['file_url']})"
+        return link
+
+
 def process_todoist_joplin_tag():
     print("Processing Todoist tag in Joplin")
 
@@ -302,11 +312,11 @@ def process_todoist_joplin_tag():
 
         for item in items:
             print(f" Copying task '{item['content']}' as note")
+            item_detail = get_item_detail(item['id'])
 
-            todoist_item_comments = get_item_notes(item)
             body = item['description'] if 'description' in item and len(item['description']) > 0 else None
             due = None
-            if 'due' in item and 'date' in item['due']:
+            if 'due' in item and item['due'] is not None and 'date' in item['due']:
                 dt = dateutil.parser.isoparse(item['due']['date'])
                 tz = item['due']['timezone'] if item['due']['timezone'] is not None else DEFAULT_TZ
                 dt = dt.astimezone(pytz.timezone(tz))
@@ -314,17 +324,24 @@ def process_todoist_joplin_tag():
 
             joplin_note = create_new_note(item['content'], body, notebook_id=None, is_html=True, due_date=due)
 
-            for comment in todoist_item_comments:
-                if comment['file_attachment'] is None:
-                    append_to_note(joplin_note, comment['content'])
-                else:
-                    link = f"[{comment['file_attachment']['file_name']} - {comment['file_attachment']['file_type']}]" \
-                           f"({comment['file_attachment']['file_url']})"
-                    append_to_note(joplin_note, link)
+            for comment in item_detail['notes']:
+                append_to_note(joplin_note, get_todoist_note_text(comment))
+
+            todoist_project = item_detail['project']
+            todoist_project_details = get_project_details(todoist_project['id'])
+            child_items = [i for i in todoist_project_details['items'] if i['parent_id'] == item['id']]
+            if len(child_items) > 0:
+                for child_item in child_items:
+                    append_note = 'Task: ' + child_item['content'] + " " + child_item['description']
+                    for child_note in get_item_detail(child_item['id'])['notes']:
+                        append_note += '\n' + get_todoist_note_text(child_note)
+                    append_to_note(joplin_note, append_note)
+                    item_to_remove = next((i for i in items if i['id'] == child_item['id']), None)
+                    if item_to_remove is not None:
+                        items.remove(item_to_remove)
 
             add_note_tag(joplin_note, todoist_joplin_tag)
 
-            todoist_project = get_project(item['project_id'])
             joplin_tag = next((t for t in get_tags() if t['title'][1:].lower() == todoist_project['name'].lower()),
                               None)
             if joplin_tag is None and todoist_project['name'] != 'Inbox':

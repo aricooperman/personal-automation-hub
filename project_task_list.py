@@ -56,7 +56,7 @@ def print_todoist_project_tasks(projects: List[Project], level: int, todoist_chi
         child_projects = todoist_child_projects[proj['id']] if proj['id'] in todoist_child_projects else None
         joplin_project = next((p for p in joplin_projects if p['title'][1:].lower() == proj['name'].lower()), None)
 
-        proj_details = get_project_details(proj)
+        proj_details = get_project_details(proj['id'])
         items = [i for i in proj_details['items'] if not i['checked'] and i['due'] is None]
 
         if len(items) == 0 and child_projects is None and joplin_project is None:
