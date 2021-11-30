@@ -6,13 +6,16 @@ from todoist.models import Project, Label, Item, Note
 
 from configuration import todoist_configs
 
+
 class ItemDetail(TypedDict):
     item: dict
     notes: list[dict]
     project: dict
 
+
 api = todoist.TodoistAPI(todoist_configs['api-key'])
 api.sync()
+
 
 def get_all_projects() -> List[Project]:
     return api.state['projects']
@@ -45,24 +48,23 @@ def get_label(label_name: str) -> Optional[Label]:
     if not label_name or len(label_name.strip()) == 0:
         return None
     label_name_lower = label_name.lower()
-    label = next((l for l in api.state['labels'] if l['name'].lower() == label_name_lower), None)
-    return label
+    return next((label for label in api.state['labels'] if label['name'].lower() == label_name_lower), None)
 
 
 def get_items_with_label(label: Label) -> List[Item]:
     return [item for item in api.state['items'] if 'labels' in item and label['id'] in item['labels']]
 
 
-def add_item(content, comment=None, due=None, labels=None, project=None):
+def add_item(content, comment=None, due=None, labels: List[str] = None, project=None):  # TODO handle string and Label
     if labels is None:
         labels = []
 
     label_ids = []
     for label in labels:
-        label = get_label(label)
-        if not label:
-            label = api.labels.add(label.title().replace(' ', ''), color=41)
-        label_ids.append(label['id'])
+        todoist_label = get_label(label)
+        if todoist_label is not None:
+            todoist_label = api.labels.add(label.title().replace(' ', ''), color=41)
+        label_ids.append(todoist_label['id'])
 
     project_id = project['id'] if project else None
 

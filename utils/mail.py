@@ -6,7 +6,6 @@ import smtplib
 import ssl
 from email.message import EmailMessage
 from email.policy import default
-from typing import Dict
 
 from configuration import mail_configs, joplin_configs
 from constants import PDF_MIME_TYPE, PNG_MIME_TYPE
@@ -59,15 +58,21 @@ def fetch_mail(host: str, port: int, username: str, password: str, mailbox: str)
                 print(f"Failed to retrieve mail #{i} from mailbox {mailbox}: {resp} - {data}")
                 continue
 
+            if len(data) < 1 or data[0] is None or not isinstance(data[0], tuple):
+                raise RuntimeError("Unexpected mail fetch data: " + ' '.join(map(str, data)))
+
             data_desc, msg_data = data[0]
             match = id_pattern.match(str(data_desc, 'utf-8'))
             if match is None:
                 print(f"Could not parse email UID from {data_desc}")
                 continue
 
-            uid = match.group('uid')
+            uid = int(match.group('uid'))
             msg = email.message_from_bytes(msg_data, policy=default)
-            messages[uid] = msg
+            if isinstance(msg, EmailMessage):
+                messages[uid] = msg
+            else:
+                raise RuntimeError("Received a message that was not type EmailMessage: " + str(msg))
 
     return messages
 

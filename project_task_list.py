@@ -5,9 +5,9 @@ from typing import Dict, List, Optional
 
 from todoist.models import Project
 
-from joplin.functions import get_active_projects as get_joplin_projects, get_notes_with_tag, Tag
-from mail.functions import send_mail
-from my_todoist.functions import get_active_projects as get_todoist_projects, get_project_details, get_labels
+from service.joplin_api import get_active_projects as get_joplin_projects, get_notes_with_tag, Tag
+from utils.mail import send_mail
+from service.todoist_api import get_active_projects as get_todoist_projects, get_project_details, get_labels
 from configuration import mail_configs
 
 file_str = StringIO()

@@ -9,19 +9,21 @@ from io import BytesIO, StringIO
 
 import dateutil.parser
 import pytz
-from todoist.models import Note
 
 from configuration import joplin_configs, evernote_configs, mail_configs, file_configs, kindle_configs, \
     todoist_configs, trello_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
-from file.functions import move_file
-from joplin.functions import sync, get_note_resources, get_resource_file, handle_processed_note, \
+from enums import MimeType
+from utils.file import move_file
+from service.joplin_api import sync, get_note_resources, get_resource_file, handle_processed_note, \
     add_new_note_from_file, get_tag, get_notes_with_tag, get_note_tags, is_processed, \
-    get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note
-from mail.functions import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
+    get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note, \
+    get_resource, remove_note_tag
+from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
     get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
-from my_todoist.functions import get_all_projects, create_project, add_item, add_file_comment, get_label, \
-    get_items_with_label, get_item_notes, get_project, archive_item, get_item_detail, get_project_details
+from service.todoist_api import get_all_projects, create_project, add_item, add_file_comment, get_label, \
+    get_items_with_label, archive_item, get_item_detail, get_project_details
+from utils.ocr import get_image_full_text
 
 FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
 
@@ -253,9 +255,9 @@ def process_joplin_todoist_tag():
 
 def process_joplin_trello_tag():
     print("Processing Trello tag in Joplin")
-    tag = get_tag(trello_configs['joplin-tag'], auto_create=True)
+    tag = get_tag(trello_configs['joplin-tag'], auto_create=False)
     if not tag:
-        print(f" Unable to find the Joplin tag {trello_configs['joplin-tag']}")
+        print(f" No Joplin tag {trello_configs['joplin-tag']}")
         return
 
     notes = get_notes_with_tag(tag)
@@ -280,6 +282,28 @@ def process_joplin_trello_tag():
         except Exception as e:
             traceback.print_exc()
             print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
+
+
+def process_joplin_ocr_tag():
+    print("Processing OCR tag in Joplin")
+    tag = get_tag(joplin_configs['ocr-tag'], auto_create=False)
+    if not tag:
+        print(f" No Joplin tag {joplin_configs['ocr-tag']}")
+        return
+
+    notes = get_notes_with_tag(tag)
+    for note in notes:
+        for resource in get_note_resources(note):
+            mime_type = determine_mime_type(resource['filename'], resource['mime'])
+            if mime_type != MimeType.IMG:
+                continue
+
+            file = get_resource_file(resource['id'])
+            img_text = get_image_full_text(resource['filename'], BytesIO(file))
+            if len(img_text.strip()) > 0:
+                append_to_note(note, img_text)
+
+        remove_note_tag(note, tag)
 
 
 def get_todoist_note_text(note):
@@ -365,6 +389,7 @@ process_joplin_directory()
 process_joplin_kindle_tag()
 process_joplin_todoist_tag()
 process_joplin_trello_tag()
+process_joplin_ocr_tag()
 
 # Todoist Handling
 process_todoist_joplin_tag()

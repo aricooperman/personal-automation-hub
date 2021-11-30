@@ -32,6 +32,7 @@ joplin:
   auto-sync: false
   delete-processed: false
   processed-tag: <tag name>
+  ocr-tag: <tag name>
 
 file:
   archive: <path>

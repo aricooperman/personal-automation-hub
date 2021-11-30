@@ -8,8 +8,10 @@ import requests
 from configuration import joplin_configs
 from constants import PNG_MIME_TYPE, PDF_MIME_TYPE
 from enums import MimeType
-from file.functions import get_title_from_filename, get_tags_from_filename, get_last_modified_time_from_filename
-from mail.functions import determine_mime_type
+from utils.file import get_title_from_filename, get_tags_from_filename, get_last_modified_time_from_filename
+from utils.mail import determine_mime_type
+from utils.ocr import get_image_full_text
+from utils.pdf import get_pdf_full_text
 
 ITEMS_KEY = 'items'
 HAS_MORE_KEY = 'has_more'
@@ -29,6 +31,7 @@ FOLDERS_NOTES_API_URL = FOLDERS_API_URL + "/{notebook_id}/notes?fields=" + NOTE_
 TAGS_API_URL = f"{BASE_URL}/tags"
 TAG_API_URL = TAGS_API_URL + "/{tag_id}"
 TAG_NOTE_API_URL = TAG_API_URL + "/notes?fields=" + NOTE_FIELDS
+TAG_REMOVE_FROM_NOTE_API_URL = TAG_API_URL + "/notes/{note_id}"
 
 RESOURCES_API_URL = f"{BASE_URL}/resources"
 RESOURCES_RESOURCE_API_URL = RESOURCES_API_URL + "/{resource_id}"
@@ -155,7 +158,7 @@ def post_item(url, payload, params=None):
     return response.json()
 
 
-def delete_item(url, payload=None, params=None):
+def delete_item(url: str, payload=None, params: dict = None) -> any:
     if params is None:
         params = get_default_params()
 
@@ -163,7 +166,7 @@ def delete_item(url, payload=None, params=None):
     if response.status_code != requests.codes.ok:
         raise RuntimeError(
             f"Received bad status code ({response.status_code} in delete response for {response.request}")
-    return response.json()
+    return response.json() if len(response.content) > 0 else None
 
 
 def update_item(url, payload, params=None):
@@ -233,7 +236,7 @@ def delete_tag(tag: Tag):
 
 def add_note_tag(note: Note, tag: Tag) -> None:
     tag_id = tag['id']
-    print(f"Adding tag '{tag['title']} to note {note['title']}'")
+    print(f"   Adding tag '{tag['title']} to note {note['title']}'")
     post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note['id']})
 
 
@@ -249,8 +252,12 @@ def add_note_tags(note: Note, tags: List[str]) -> None:
             else:
                 tag_id = existing_tag['id']
 
-            print(f"Adding tag '{tag} to note {note['title']}'")
+            print(f"   Adding tag '{tag} to note {note['title']}'")
             post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note['id']})
+
+
+def remove_note_tag(note: Note, tag: Tag) -> None:
+    delete_item(TAG_REMOVE_FROM_NOTE_API_URL.format(tag_id=tag['id'], note_id=note['id']))
 
 
 def add_generic_attachment(note: Note, file_name: str, file_like: IO) -> Resource:
@@ -345,14 +352,14 @@ def add_pdf_attachment(note: Note, file_name: str, file_like: IO) -> None:
     append_to_note(note, f"[![{file_name}](:/{thumbnail['id']})](:/{resource['id']})\n\n{pdf_text}")
 
 
-def add_img_attachment(note_id, file_name, file_like):
+def add_img_attachment(note: Note, file_name: str, file_like: IO) -> None:
     resource = add_resource(file_name, file_like)
     body = f"![{file_name}](:/{resource['id']})"
     file_like.seek(0)
     img_text = get_image_full_text(file_name, file_like)
     if len(img_text.strip()) != 0:
         body += f"\n\n{img_text}"
-    append_to_note(note_id, body)
+    append_to_note(note, body)
 
 
 def add_attachment(note: Note, file_name: str, file_like: IO, mime_type: MimeType):
@@ -368,39 +375,6 @@ def add_attachment(note: Note, file_name: str, file_like: IO, mime_type: MimeTyp
         add_generic_attachment(note, file_name, file_like)
     else:
         print(f"Unhandled file type {mime_type}")
-
-
-def get_pdf_full_text(pdf_file_like: IO) -> str:
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_file_name = f"{tmpdir}/tmp.pdf"
-        with open(tmp_file_name, mode="wb") as pdf_file:
-            pdf_file.write(pdf_file_like.read())
-
-        pdf_to_text_cmd = f"pdftotext -raw -nopgbrk '{tmp_file_name}' -"
-        out_pipe = os.popen(pdf_to_text_cmd, mode="r")
-        pdf_text = ""
-        lines = out_pipe.readlines()
-        for line in lines:
-            pdf_text += '> ' + line.replace('>', r'\>')
-        os.remove(tmp_file_name)
-        return pdf_text
-
-
-def get_image_full_text(file_name, img_file_like):
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_file_name = f"{tmpdir}/{file_name}"
-        with open(tmp_file_name, mode="wb") as img_file:
-            img_file.write(img_file_like.read())
-
-        ocr_cmd = f"tesseract -l eng '{tmp_file_name}' -"
-        out_pipe = os.popen(ocr_cmd, mode="r")
-        img_text = ""
-        lines = out_pipe.readlines()
-        for line in lines:
-            img_text += '> ' + line.replace('>', r'\>')
-
-        os.remove(tmp_file_name)
-        return img_text
 
 
 def get_notebooks():
@@ -497,7 +471,7 @@ def get_note_tags(note):
     return tags
 
 
-def get_note_resources(note):
+def get_note_resources(note: Note) -> List[Resource]:
     resources = get_items(NOTES_RESOURCES_API_URL.format(note_id=note['id']))
     return resources
 
