@@ -3,12 +3,9 @@ import tempfile
 from typing import IO
 
 
-def get_image_full_text(file_name: str, img_file_like: IO) -> str:
-    if file_name is None or len(file_name.strip()) == 0:
-        file_name = "tmp.file"
-
+def get_image_full_text(img_file_like: IO) -> str:
     with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_file_name = f"{tmpdir}/{file_name}"
+        tmp_file_name = f"{tmpdir}/tmp.img"
         with open(tmp_file_name, mode="wb") as img_file:
             img_file.write(img_file_like.read())
 

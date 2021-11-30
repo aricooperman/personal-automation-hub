@@ -24,6 +24,7 @@ from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_tit
 from service.todoist_api import get_all_projects, create_project, add_item, add_file_comment, get_label, \
     get_items_with_label, archive_item, get_item_detail, get_project_details
 from utils.ocr import get_image_full_text
+from utils.pdf import get_pdf_full_text
 
 FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
 
@@ -295,13 +296,16 @@ def process_joplin_ocr_tag():
     for note in notes:
         for resource in get_note_resources(note):
             mime_type = determine_mime_type(resource['filename'], resource['mime'])
-            if mime_type != MimeType.IMG:
-                continue
-
-            file = get_resource_file(resource['id'])
-            img_text = get_image_full_text(resource['filename'], BytesIO(file))
-            if len(img_text.strip()) > 0:
-                append_to_note(note, img_text)
+            if mime_type == MimeType.IMG:
+                file = get_resource_file(resource['id'])
+                img_text = get_image_full_text(BytesIO(file))
+                if len(img_text.strip()) > 0:
+                    append_to_note(note, img_text)
+            elif mime_type == MimeType.PDF:
+                file = get_resource_file(resource['id'])
+                pdf_text = get_pdf_full_text(BytesIO(file))
+                if len(pdf_text.strip()) > 0:
+                    append_to_note(note, pdf_text)
 
         remove_note_tag(note, tag)
 

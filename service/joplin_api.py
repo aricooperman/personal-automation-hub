@@ -356,7 +356,7 @@ def add_img_attachment(note: Note, file_name: str, file_like: IO) -> None:
     resource = add_resource(file_name, file_like)
     body = f"![{file_name}](:/{resource['id']})"
     file_like.seek(0)
-    img_text = get_image_full_text(file_name, file_like)
+    img_text = get_image_full_text(file_like)
     if len(img_text.strip()) != 0:
         body += f"\n\n{img_text}"
     append_to_note(note, body)

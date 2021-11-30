@@ -95,7 +95,7 @@ def archive_mail(host, port, username, password, mailbox, msg_uid, archive_folde
         #     if result != 'OK':
         #         print(f"Unable to select mailbox {mailbox}: {result} - {data}")
 
-        result, data = mail.uid('STORE', msg_uid, '+FLAGS', r'(\Deleted)')
+        result, data = mail.uid('STORE', str(msg_uid), '+FLAGS', r'(\Deleted)')
         if result == 'OK':
             mail.expunge()
         else:

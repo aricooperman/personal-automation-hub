@@ -9,7 +9,7 @@ def get_pdf_full_text(pdf_file_like: IO) -> str:
         with open(tmp_file_name, mode="wb") as pdf_file:
             pdf_file.write(pdf_file_like.read())
 
-        pdf_to_text_cmd = f"pdftotext -raw -nopgbrk '{tmp_file_name}' -"
+        pdf_to_text_cmd = f"pdftotext -nopgbrk -layout '{tmp_file_name}' -"
         out_pipe = os.popen(pdf_to_text_cmd, mode="r")
         pdf_text = ""
         lines = out_pipe.readlines()
