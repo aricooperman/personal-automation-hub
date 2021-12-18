@@ -152,7 +152,7 @@ def post_item(url, payload, params=None):
     if params is None:
         params = get_default_params()
 
-    response = requests.post(url, json=payload, params=params)
+    response = requests.post(url, json=payload, params=params, timeout=60)
     if response.status_code != requests.codes.ok:
         raise RuntimeError(f"Received bad status code ({response.status_code} in post response for {response.request}")
     return response.json()

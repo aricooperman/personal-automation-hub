@@ -2,10 +2,10 @@
 Description=A job to run with a systemd timer
 
 [Service]
-Type=simple
+Type=oneshot
 Environment="PYTHONPATH=_PATH_/vendor"
 ExecStart=python _PATH_/run_periodic_jobs.py
-TimeoutSec=900
+TimeoutSec=300
 
 [Install]
 WantedBy=default.target

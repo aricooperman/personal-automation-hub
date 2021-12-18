@@ -29,38 +29,6 @@ from utils.pdf import get_pdf_full_text
 FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
 
 
-# def process_todoist_directory():
-#     #TODO
-#     print("Processing Todoist files")
-#     directory = todoist_configs['directory']
-#     if not os.path.exists(directory) or not os.path.isdir(directory):
-#         print("No directory configured for Joplin file processing. Set configuration value joplin.directory")
-#         return
-#
-#     try:
-#         for dir_path, _, filenames in os.walk(directory):
-#             for f in filenames:
-#                 file = os.path.abspath(os.path.join(dir_path, f))
-#                 try:
-#                     print(f" Adding {file} to Todoist")
-#                     add_new_task_from_file(file)
-#                     if file_configs['archive']:
-#                         print(" Archiving file")
-#                         move_file(file, file_configs['archive'])
-#                 except Exception as e:
-#                     traceback.print_exc()
-#                     print(f"Error: File '{file}' could not be added: {str(e)}")
-#
-#     except Exception as e:
-#         traceback.print_exc()
-#         print(f"Error: Problem processing Joplin file: {str(e)}")
-
-
-# def process_todoist_joplin_project():
-#     #TODO
-#     pass
-
-
 def forward_mail():
     print("Processing Mail Forwarding")
 
@@ -69,25 +37,19 @@ def forward_mail():
 
         forwarding_map = account['mail-forward']
         for mailbox, email in forwarding_map.items():
-            try:
-                messages = fetch_mail(account['imap']['server'], account['imap']['port'], account['username'],
-                                      account['password'], mailbox)
-                for uid, msg in messages.items():
-                    try:
-                        print(f"  Forwarding '{get_subject(msg)}' in {mailbox} mailbox")
-                        send_mail(msg, email)
-                        if mail_configs['archive']:
-                            print("  Archiving message")
-                            archive_mail(account['imap']['server'], account['imap']['port'], account['username'],
-                                         account['password'], mailbox, uid,
-                                         account['archive-folder'] if 'archive-folder' in account else None)
-                    except Exception as e:
-                        traceback.print_exc()
-                        print(f"Error: Mail '{get_subject(msg)}' could not be forwarded: {str(e)}")
-
-            except Exception as e:
-                traceback.print_exc()
-                print(f"Error: Problem forwarding emails in {mailbox} mailbox: {str(e)}")
+            messages = fetch_mail(account['imap']['server'], account['imap']['port'], account['username'],
+                                  account['password'], mailbox)
+            for uid, msg in messages.items():
+                try:
+                    print(f"  Forwarding '{get_subject(msg)}' in {mailbox} mailbox")
+                    send_mail(msg, email)
+                    if mail_configs['archive']:
+                        print("  Archiving message")
+                        archive_mail(account['imap']['server'], account['imap']['port'], account['username'],
+                                     account['password'], mailbox, uid,
+                                     account['archive-folder'] if 'archive-folder' in account else None)
+                except Exception as exc:
+                    raise RuntimeError(f"Error: Mail '{get_subject(msg)}' could not be forwarded: {str(exc)}") from exc
 
 
 def process_joplin_email_mailbox() -> None:
@@ -95,52 +57,46 @@ def process_joplin_email_mailbox() -> None:
 
     for account in mail_configs['accounts']:
         print(f" Handling account '{account['name']}'")
-        try:
-            messages = fetch_mail(account['imap']['server'], account['imap']['port'], account['username'],
-                                  account['password'], joplin_configs['mailbox'])
-            for uid, msg in messages.items():
+        messages = fetch_mail(account['imap']['server'], account['imap']['port'], account['username'],
+                              account['password'], joplin_configs['mailbox'])
+        for uid, msg in messages.items():
+            subject = get_subject(msg)
+            print(f"  Moving '{subject}' to Joplin")
+
+            try:
                 subject = get_subject(msg)
-                print(f"  Moving '{subject}' to Joplin")
+                title = get_title_from_subject(subject)
+                tags = get_tags_from_subject(subject)
+                notebook_name = get_notebook_from_subject(subject)
+                body, content_type = get_email_body(msg)
+                notebook = get_notebook(notebook_name)
 
-                try:
-                    subject = get_subject(msg)
-                    title = get_title_from_subject(subject)
-                    tags = get_tags_from_subject(subject)
-                    notebook_name = get_notebook_from_subject(subject)
-                    body, content_type = get_email_body(msg)
-                    notebook = get_notebook(notebook_name)
+                note = create_new_note(title, body, notebook_id=notebook['id'],
+                                       is_html=(content_type == 'text/html'))
 
-                    note = create_new_note(title, body, notebook_id=notebook['id'],
-                                           is_html=(content_type == 'text/html'))
+                add_note_tags(note, tags)
 
-                    add_note_tags(note, tags)
+                for part in msg.iter_attachments():
+                    file_name = part.get_filename(failobj="unknown_file_name")
+                    content_type = part.get_content_type()
+                    part_type = determine_mime_type(file_name, content_type)
+                    content = part.get_content()
+                    if isinstance(content, bytes):
+                        with BytesIO(content) as f:
+                            add_attachment(note, file_name, f, part_type)
+                    else:
+                        with StringIO(content) as f:
+                            add_attachment(note, file_name, f, part_type)
 
-                    for part in msg.iter_attachments():
-                        file_name = part.get_filename(failobj="unknown_file_name")
-                        content_type = part.get_content_type()
-                        part_type = determine_mime_type(file_name, content_type)
-                        content = part.get_content()
-                        if isinstance(content, bytes):
-                            with BytesIO(content) as f:
-                                add_attachment(note, file_name, f, part_type)
-                        else:
-                            with StringIO(content) as f:
-                                add_attachment(note, file_name, f, part_type)
-
-                    if evernote_configs['enabled']:
-                        send_mail(msg, evernote_configs['email'])
-                    if mail_configs['archive']:
-                        print("  Archiving message")
-                        archive_mail(account['imap']['server'], account['imap']['port'], account['username'],
-                                     account['password'], joplin_configs['mailbox'], uid,
-                                     account['archive-folder'] if 'archive-folder' in account else None)
-                except Exception as e:
-                    traceback.print_exc()
-                    print(f"Error: Mail '{subject}' could not be added: {str(e)}")
-
-        except Exception as e:
-            traceback.print_exc()
-            print(f"Error: Problem processing Joplin email forwarding: {str(e)}")
+                if evernote_configs['enabled']:
+                    send_mail(msg, evernote_configs['email'])
+                if mail_configs['archive']:
+                    print("  Archiving message")
+                    archive_mail(account['imap']['server'], account['imap']['port'], account['username'],
+                                 account['password'], joplin_configs['mailbox'], uid,
+                                 account['archive-folder'] if 'archive-folder' in account else None)
+            except Exception as exc:
+                raise RuntimeError(f"Error: Mail '{subject}' could not be added: {str(exc)}") from exc
 
 
 def process_joplin_directory():
@@ -150,23 +106,18 @@ def process_joplin_directory():
         print("No directory configured for Joplin file processing. Set configuration value joplin.directory")
         return
 
-    try:
-        for dir_path, _, filenames in os.walk(directory):
-            for f in filenames:
-                file = os.path.abspath(os.path.join(dir_path, f))
-                try:
-                    print(f" Adding file {file} to Joplin")
-                    add_new_note_from_file(file)
-                    if file_configs['archive']:
-                        print(" Archiving file")
-                        move_file(file, file_configs['archive'])
-                except Exception as e:
-                    traceback.print_exc()
-                    print(f"Error: File '{file}' could not be added: {str(e)}")
-
-    except Exception as e:
-        traceback.print_exc()
-        print(f"Error: Problem processing Joplin file: {str(e)}")
+    for dir_path, _, filenames in os.walk(directory):
+        for f in filenames:
+            file = os.path.abspath(os.path.join(dir_path, f))
+            try:
+                print(f" Adding file {file} to Joplin")
+                add_new_note_from_file(file)
+                if file_configs['archive']:
+                    print(" Archiving file")
+                    move_file(file, file_configs['archive'])
+            except Exception as exc:
+                traceback.print_exc()
+                raise RuntimeError(f"Error: File '{file}' could not be added: {str(exc)}") from exc
 
 
 def process_joplin_kindle_tag():
@@ -195,9 +146,8 @@ def process_joplin_kindle_tag():
             print(f"Sending note attachments to Kindle ")
             send_mail(msg, kindle_configs['email'])
             handle_processed_note(note)
-        except Exception as e:
-            traceback.print_exc()
-            print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
+        except Exception as exc:
+            raise RuntimeError(f"Error: Note '{note['title']}' could not sent to Kindle: {str(exc)}") from exc
 
 
 def process_joplin_todoist_tag():
@@ -280,9 +230,8 @@ def process_joplin_trello_tag():
             # TODO use Trello API
             send_mail(msg, trello_configs['email'])
             handle_processed_note(note)
-        except Exception as e:
-            traceback.print_exc()
-            print(f"Error: Note '{note['title']}' could not sent to Kindle: {str(e)}")
+        except Exception as exc:
+            raise RuntimeError(f"Error: Note '{note['title']}' could not sent to Kindle: {str(exc)}") from exc
 
 
 def process_joplin_ocr_tag():
@@ -384,23 +333,31 @@ def process_todoist_joplin_tag():
 print("Start: ", str(datetime.datetime.now()))
 print("===============================")
 
-# Mail Handling
-forward_mail()
-process_joplin_email_mailbox()
+try:
+    # Mail Handling
+    forward_mail()
+    process_joplin_email_mailbox()
 
-# Joplin Handling
-process_joplin_directory()
-process_joplin_kindle_tag()
-process_joplin_todoist_tag()
-process_joplin_trello_tag()
-process_joplin_ocr_tag()
+    # Joplin Handling
+    process_joplin_directory()
+    process_joplin_kindle_tag()
+    process_joplin_todoist_tag()
+    process_joplin_trello_tag()
+    process_joplin_ocr_tag()
 
-# Todoist Handling
-process_todoist_joplin_tag()
+    # Todoist Handling
+    process_todoist_joplin_tag()
 
-if joplin_configs['auto-sync']:
-    print("Starting Joplin Sync")
-    sync()
+    if joplin_configs['auto-sync']:
+        print("Starting Joplin Sync")
+        sync()
+except Exception as e:
+    msg = EmailMessage()
+    msg['Subject'] = "Automation Hub Error"
+    msg.set_content(traceback.format_exc())
+    send_mail(msg, mail_configs['smtp']['username'])
+    raise e
+
 
 print("===============================")
 print("End: ", str(datetime.datetime.now()))

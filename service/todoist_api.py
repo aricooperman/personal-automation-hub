@@ -64,7 +64,7 @@ def add_item(content, comment=None, due=None, labels: List[str] = None, project=
         todoist_label = get_label(label)
         if todoist_label is not None:
             todoist_label = api.labels.add(label.title().replace(' ', ''), color=41)
-        label_ids.append(todoist_label['id'])
+            label_ids.append(todoist_label['id'])
 
     project_id = project['id'] if project else None
 
