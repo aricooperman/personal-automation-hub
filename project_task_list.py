@@ -5,13 +5,13 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from io import StringIO
 from itertools import groupby
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import markdown
 import pdfkit
 from todoist.models import Project
 
-from service.joplin_api import get_active_projects as get_joplin_projects, get_notes_with_tag, Tag
+from service.joplin_api import get_notes_with_tag, Tag, get_active_projects, get_default_notebook, get_notes_in_notebook
 from utils.mail import send_mail
 from service.todoist_api import get_active_projects as get_todoist_projects, get_project_details, get_labels
 from configuration import mail_configs
@@ -20,19 +20,11 @@ file_str = StringIO()
 
 
 def print_project(level: int, project_name: str) -> None:
-    # file_str.write("\n#")
-    # file_str.write("#" * level)
-    # file_str.write(" ")
-    # file_str.write(project_name)
-    # file_str.write('\n')
     indicator = "*" if level > 0 else "**"
     print_table_row(indicator + project_name + indicator, '', '', None, '', None)
 
 
 def print_section(section_name):
-    # file_str.write("\n*")
-    # file_str.write(section_name)
-    # file_str.write("*\n")
     print_table_row('', section_name, '', None, '', None)
 
 
@@ -68,15 +60,21 @@ def print_items(items: List[dict], section_name: Optional[str], level: int, labe
             else (" - " + ", ".join([labels[label_id] for label_id in item['labels']]))
 
         indent = ("&nbsp;&nbsp;&nbsp;&nbsp;" * level)
-        order = str(n) if level % 2 == 0 else chr(ord('`')+n)  # '@'
+        order = str(n) if level % 2 == 0 else chr(ord('`') + n)  # '@'
         print_table_row('', '', indent + order, priority, indent + item['content'].replace("|", "&vert;"), label)
 
         if item['id'] in child_items:
             print_items(child_items[item['id']], None, level + 1, labels)
 
 
-def print_joplin_project_tasks(project: Tag, project_name: Optional[str], level: int):
-    notes = [note for note in get_notes_with_tag(project) if not note['is_todo']]
+def print_joplin_project_tasks(project: Union[Tag, Project], project_name: Optional[str], level: int):
+    if project['title'] != 'Inbox':
+        notes = get_notes_with_tag(project)
+    else:
+        notes = get_notes_in_notebook(project)
+
+    notes = [note for note in notes if not note['is_todo']]
+
     if len(notes) > 0:
         if level > 0:
             print_section(f"{project_name} (Joplin)")
@@ -91,7 +89,8 @@ def print_todoist_project_tasks(projects: List[Project], level: int, todoist_chi
                                 joplin_projects: List[Tag], labels: Dict[int, str]):
     for project in sorted(projects, key=lambda p: p['child_order']):
         child_projects = todoist_child_projects[project['id']] if project['id'] in todoist_child_projects else None
-        joplin_project = next((p for p in joplin_projects if p['title'][1:].lower() == project['name'].lower()), None)
+        joplin_project = next((p for p in joplin_projects if p['title'].lower() == project['name'].lower() or
+                               p['title'][1:].lower() == project['name'].lower()), None)
 
         proj_details = get_project_details(project['id'])
         items = [i for i in proj_details['items'] if not i['checked'] and i['due'] is None]
@@ -131,7 +130,8 @@ def generate_task_list():
     todoist_child_projects = {p_id: list(grouper) for p_id, grouper in
                               groupby(sorted([p for p in todoist_projects if p['parent_id'] is not None],
                                              key=lambda p: p['parent_id']), key=lambda p: p['parent_id'])}
-    joplin_projects = get_joplin_projects()
+    joplin_projects = get_active_projects()
+    joplin_projects.append(get_default_notebook())
 
     labels = {label['id']: label['name'] for label in get_labels()}
 

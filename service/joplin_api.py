@@ -56,6 +56,11 @@ RESOURCES_RESOURCE_FILE_API_URL = RESOURCES_RESOURCE_API_URL + "/file"
 # smart_filter 	15
 # command 	16
 
+class Notebook(TypedDict):
+    id: str
+    parent_id: str
+    title: str
+
 
 class Tag(TypedDict):
     id: str
@@ -450,7 +455,7 @@ def sync():
     pass  # TODO
 
 
-def get_notes_in_notebook(notebook) -> List[Note]:
+def get_notes_in_notebook(notebook: Notebook) -> List[Note]:
     if not notebook:
         return []
 
@@ -466,7 +471,7 @@ def get_notes_with_tag(tag: Tag) -> List[Note]:
     return notes
 
 
-def get_note_tags(note):
+def get_note_tags(note: Note) -> List[Tag]:
     tags = get_items(NOTES_TAGS_API_URL.format(note_id=note['id']))
     return tags
 
@@ -476,7 +481,7 @@ def get_note_resources(note: Note) -> List[Resource]:
     return resources
 
 
-def get_resource(resource_id):
+def get_resource(resource_id: str) -> Resource:
     resource = get_item(RESOURCES_RESOURCE_API_URL.format(resource_id=resource_id))
     return resource
 

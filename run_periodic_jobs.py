@@ -14,15 +14,15 @@ from configuration import joplin_configs, evernote_configs, mail_configs, file_c
     todoist_configs, trello_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
 from enums import MimeType
-from utils.file import move_file
 from service.joplin_api import sync, get_note_resources, get_resource_file, handle_processed_note, \
     add_new_note_from_file, get_tag, get_notes_with_tag, get_note_tags, is_processed, \
     get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note, \
-    get_resource, remove_note_tag
-from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
-    get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
+    remove_note_tag
 from service.todoist_api import get_all_projects, create_project, add_item, add_file_comment, get_label, \
     get_items_with_label, archive_item, get_item_detail, get_project_details
+from utils.file import move_file
+from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
+    get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
 from utils.ocr import get_image_full_text
 from utils.pdf import get_pdf_full_text
 
