@@ -1,3 +1,4 @@
+import os
 from email import encoders
 from email.message import EmailMessage
 from email.mime.base import MIMEBase
@@ -177,3 +178,5 @@ if __name__ == '__main__':
 
     msg['Subject'] = 'Task List'
     send_mail(msg, mail_configs['smtp']['username'])
+
+    os.remove('task_list.pdf')
