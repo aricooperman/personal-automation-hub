@@ -111,8 +111,8 @@ def get_subject(msg):
 
 
 def get_title_from_subject(s):
-    s = re.sub(r"(#[\w\-_]+\s*)", "", s)
-    s = re.sub(r"(@[\w\-_]+\s*)", "", s)
+    s = re.sub(r"(\s+#[\w\-_]+\s*)", "", s)
+    s = re.sub(r"(\s+@[\w\-_]+\s*)", "", s)
 
     if s and len(s.strip()) > 0:
         return s.strip()
@@ -123,12 +123,12 @@ def get_title_from_subject(s):
 
 
 def get_tags_from_subject(s):
-    s = re.findall(r"(?:#)([\w\-_]+)", s)
+    s = re.findall(r"\s+(?:#)([\w\-_]+)", s)
     return s
 
 
 def get_notebook_from_subject(subject: str) -> str:
-    subject = re.search(r"@([\w\-_]+)", subject)
+    subject = re.search(r"\s+@([\w\-_]+)", subject)
     return subject.group(1) if subject else None
 
 
