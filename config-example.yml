@@ -53,8 +53,3 @@ trello:
   email: <Trello board email>
   joplin-tag: Trello
 
-evernote:
-  enabled: true
-  email: <Evernote email>
-
-

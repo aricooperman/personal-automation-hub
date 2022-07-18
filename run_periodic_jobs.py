@@ -10,7 +10,7 @@ from io import BytesIO, StringIO
 import dateutil.parser
 import pytz
 
-from configuration import joplin_configs, evernote_configs, mail_configs, file_configs, kindle_configs, \
+from configuration import joplin_configs, mail_configs, file_configs, kindle_configs, \
     todoist_configs, trello_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
 from enums import MimeType
@@ -88,8 +88,6 @@ def process_joplin_email_mailbox() -> None:
                         with StringIO(content) as f:
                             add_attachment(note, file_name, f, part_type)
 
-                if evernote_configs['enabled']:
-                    send_mail(msg, evernote_configs['email'])
                 if mail_configs['archive']:
                     print("  Archiving message")
                     archive_mail(account['imap']['server'], account['imap']['port'], account['username'],
