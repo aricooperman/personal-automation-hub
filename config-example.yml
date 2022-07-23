@@ -40,16 +40,19 @@ file:
 todoist:
   api-key: <api key>
   joplin-tag: <tag name>
+  joplin-notebook: <notebook name>
   service:
     joplin:
       tag-mapping: [<from tag name>, <to tag name>]
       processed-tag: <tag name>
 
 kindle:
-  joplin-tag: Kindle
+  joplin-tag: <tag name>
+  joplin-notebook: <notebook name>
   email: <Kindle device email>
 
 trello:
   email: <Trello board email>
-  joplin-tag: Trello
+  joplin-tag: <tag name>
+  joplin-notebook: <notebook name>
 

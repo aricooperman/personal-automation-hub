@@ -1,32 +1,30 @@
 #!/usr/bin/env python
 
 import datetime
-import os
 import re
 import traceback
 from email.message import EmailMessage
 from io import BytesIO, StringIO
+from typing import List
 
 import dateutil.parser
 import pytz
 
-from configuration import joplin_configs, mail_configs, file_configs, kindle_configs, \
-    todoist_configs, trello_configs
+from configuration import joplin_configs, mail_configs, kindle_configs, todoist_configs, trello_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
 from enums import MimeType
 from service.joplin_api import sync, get_note_resources, get_resource_file, handle_processed_note, \
-    add_new_note_from_file, get_tag, get_notes_with_tag, get_note_tags, is_processed, \
+    get_tag, get_notes_with_tag, get_note_tags, is_processed, \
     get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note, \
-    remove_note_tag
+    remove_note_tag, get_notes_in_notebook, Note
 from service.todoist_api import get_all_projects, create_project, add_item, add_file_comment, get_label, \
     get_items_with_label, archive_item, get_item_detail, get_project_details
-from utils.file import move_file
 from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
     get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
 from utils.ocr import get_image_full_text
 from utils.pdf import get_pdf_full_text
 
-FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag'], todoist_configs['joplin-tag']]
+FILTERED_JOPLIN_TAGS = [joplin_configs['processed-tag']]  # , todoist_configs['joplin-tag']]
 
 
 def forward_mail():
@@ -97,28 +95,31 @@ def process_joplin_email_mailbox() -> None:
                 raise RuntimeError(f"Error: Mail '{subject}' could not be added: {str(exc)}") from exc
 
 
-def process_joplin_directory():
-    print("Processing Joplin files")
-    directory = joplin_configs['directory']
-    if not os.path.exists(directory) or not os.path.isdir(directory):
-        print("No directory configured for Joplin file processing. Set configuration value joplin.directory")
-        return
-
-    for dir_path, _, filenames in os.walk(directory):
-        for f in filenames:
-            file = os.path.abspath(os.path.join(dir_path, f))
-            try:
-                print(f" Adding file {file} to Joplin")
-                add_new_note_from_file(file)
-                if file_configs['archive']:
-                    print(" Archiving file")
-                    move_file(file, file_configs['archive'])
-            except Exception as exc:
-                traceback.print_exc()
-                raise RuntimeError(f"Error: File '{file}' could not be added: {str(exc)}") from exc
+# def process_joplin_directory():
+#     print("Processing Joplin files")
+#     directory = joplin_configs['directory']
+#     if not os.path.exists(directory) or not os.path.isdir(directory):
+#         print("No directory configured for Joplin file processing. Set configuration value joplin.directory")
+#         return
+#
+#     for dir_path, _, filenames in os.walk(directory):
+#         for f in filenames:
+#             file = os.path.abspath(os.path.join(dir_path, f))
+#             try:
+#                 print(f" Adding file {file} to Joplin")
+#                 add_new_note_from_file(file)
+#                 if file_configs['archive']:
+#                     print(" Archiving file")
+#                     move_file(file, file_configs['archive'])
+#             except Exception as exc:
+#                 traceback.print_exc()
+#                 raise RuntimeError(f"Error: File '{file}' could not be added: {str(exc)}") from exc
 
 
 def process_joplin_kindle_tag():
+    if 'joplin-tag' not in kindle_configs:
+        return
+
     print("Processing Kindle tag in Joplin")
     tag = get_tag(kindle_configs['joplin-tag'], auto_create=False)
     if not tag:
@@ -126,6 +127,26 @@ def process_joplin_kindle_tag():
         return
 
     notes = get_notes_with_tag(tag)
+    if len(notes) > 0:
+        send_notes_to_kindle(notes)
+
+
+def process_joplin_kindle_notebook():
+    if 'joplin-notebook' not in kindle_configs:
+        return
+
+    print("Processing Kindle notebook in Joplin")
+    notebook = get_notebook(kindle_configs['joplin-notebook'], default_on_missing=False, auto_create=False)
+    if not notebook:
+        print(f" Unable to find the Joplin notebook {kindle_configs['joplin-notebook']}")
+        return
+
+    notes = get_notes_in_notebook(notebook)
+    if len(notes) > 0:
+        send_notes_to_kindle(notes)
+
+
+def send_notes_to_kindle(notes: List[Note]):
     for note in notes:
         if is_processed(note):
             continue
@@ -149,13 +170,36 @@ def process_joplin_kindle_tag():
 
 
 def process_joplin_todoist_tag():
+    if 'joplin-tag' not in todoist_configs:
+        return
+
     print("Processing Todoist tag in Joplin")
     tag = get_tag(todoist_configs['joplin-tag'], auto_create=False)
     if not tag:
-        print(f" Unable to find the Joplin notebook {todoist_configs['joplin-tag']}")
+        print(f" Unable to find the Joplin tag {todoist_configs['joplin-tag']}")
         return
 
     notes = get_notes_with_tag(tag)
+    if len(notes) > 0:
+        send_notes_to_todoist(notes)
+
+
+def process_joplin_todoist_notebook():
+    if 'joplin-notebook' not in todoist_configs:
+        return
+
+    print("Processing Todoist notebook in Joplin")
+    notebook = get_notebook(todoist_configs['joplin-notebook'], default_on_missing=False, auto_create=False)
+    if not notebook:
+        print(f" Unable to find the Joplin notebook {todoist_configs['joplin-notebook']}")
+        return
+
+    notes = get_notes_in_notebook(notebook)
+    if len(notes) > 0:
+        send_notes_to_todoist(notes)
+
+
+def send_notes_to_todoist(notes: List[Note]):
     for note in notes:
         if is_processed(note):
             continue
@@ -203,6 +247,9 @@ def process_joplin_todoist_tag():
 
 
 def process_joplin_trello_tag():
+    if 'joplin-tag' not in trello_configs:
+        return
+
     print("Processing Trello tag in Joplin")
     tag = get_tag(trello_configs['joplin-tag'], auto_create=False)
     if not tag:
@@ -210,23 +257,43 @@ def process_joplin_trello_tag():
         return
 
     notes = get_notes_with_tag(tag)
+    if len(notes) > 0:
+        send_notes_to_trello(notes)
+
+
+def process_joplin_trello_notebook():
+    if 'joplin-notebook' not in trello_configs:
+        return
+
+    print("Processing Trello notebook in Joplin")
+    notebook = get_notebook(trello_configs['joplin-notebook'], default_on_missing=False, auto_create=False)
+    if not notebook:
+        print(f" No Joplin notebook {trello_configs['joplin-notebook']}")
+        return
+
+    notes = get_notes_in_notebook(notebook)
+    if len(notes) > 0:
+        send_notes_to_trello(notes)
+
+
+def send_notes_to_trello(notes: List[Note]):
     for note in notes:
         if is_processed(note):
             continue
 
         try:
-            msg = EmailMessage()
-            msg['Subject'] = note['title']
+            trello_msg = EmailMessage()
+            trello_msg['Subject'] = note['title']
 
             resources = get_note_resources(note)
             for resource in resources:
                 file_bytes = get_resource_file(resource['id'])
                 maintype, subtype = resource['mime'].split('/', 1)
-                msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=resource['title'])
+                trello_msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=resource['title'])
 
             print(f" Sending note to Trello ")
             # TODO use Trello API
-            send_mail(msg, trello_configs['email'])
+            send_mail(trello_msg, trello_configs['email'])
             handle_processed_note(note)
         except Exception as exc:
             raise RuntimeError(f"Error: Note '{note['title']}' could not sent to Kindle: {str(exc)}") from exc
@@ -337,11 +404,14 @@ try:
     process_joplin_email_mailbox()
 
     # Joplin Handling
-    process_joplin_directory()
-    process_joplin_kindle_tag()
-    process_joplin_todoist_tag()
-    process_joplin_trello_tag()
     process_joplin_ocr_tag()
+    # process_joplin_directory()
+    process_joplin_kindle_tag()
+    process_joplin_kindle_notebook()
+    process_joplin_todoist_tag()
+    process_joplin_todoist_notebook()
+    process_joplin_trello_tag()
+    process_joplin_trello_notebook()
 
     # Todoist Handling
     process_todoist_joplin_tag()
@@ -355,7 +425,6 @@ except Exception as e:
     msg.set_content(traceback.format_exc())
     send_mail(msg, mail_configs['smtp']['username'])
     raise e
-
 
 print("===============================")
 print("End: ", str(datetime.datetime.now()))
