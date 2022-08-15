@@ -294,9 +294,9 @@ def attach_text_to_note(note: Note, file_like: IO, is_html: bool = False) -> Non
     text = file_like.read()
     if is_html:
         # Create temporary note to convert html to md consistently
-        note = create_new_note("Temp", text, is_html=is_html)
-        text = note['body']
-        delete_note(note['id'])
+        tmp_note = create_new_note("Temp", text, is_html=is_html)
+        text = tmp_note['body']
+        delete_note(tmp_note)
 
     append_to_note(note, text)
 

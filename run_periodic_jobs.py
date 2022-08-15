@@ -74,17 +74,7 @@ def process_joplin_email_mailbox() -> None:
 
                 add_note_tags(note, tags)
 
-                for part in msg.iter_attachments():
-                    file_name = part.get_filename(failobj="unknown_file_name")
-                    content_type = part.get_content_type()
-                    part_type = determine_mime_type(file_name, content_type)
-                    content = part.get_content()
-                    if isinstance(content, bytes):
-                        with BytesIO(content) as f:
-                            add_attachment(note, file_name, f, part_type)
-                    else:
-                        with StringIO(content) as f:
-                            add_attachment(note, file_name, f, part_type)
+                add_email_attachments_to_note(msg, note)
 
                 if mail_configs['archive']:
                     print("  Archiving message")
@@ -93,6 +83,23 @@ def process_joplin_email_mailbox() -> None:
                                  account['archive-folder'] if 'archive-folder' in account else None)
             except Exception as exc:
                 raise RuntimeError(f"Error: Mail '{subject}' could not be added: {str(exc)}") from exc
+
+
+def add_email_attachments_to_note(email_message, note: Note):
+    for part in email_message.iter_attachments():
+        content_type = part.get_content_type()
+        if part.is_multipart():
+            add_email_attachments_to_note(part, note)
+        else:
+            file_name = part.get_filename(failobj="unknown_file_name")
+            part_type = determine_mime_type(file_name, content_type)
+            content = part.get_content()
+            if isinstance(content, bytes):
+                with BytesIO(content) as f:
+                    add_attachment(note, file_name, f, part_type)
+            else:
+                with StringIO(content) as f:
+                    add_attachment(note, file_name, f, part_type)
 
 
 # def process_joplin_directory():
