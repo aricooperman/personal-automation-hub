@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from typing import TypedDict, List, Optional, IO
+from typing import TypedDict, List, Optional, IO, Dict
 
 import requests
 
@@ -308,23 +308,24 @@ def get_note_body(note: Note) -> Optional[str]:
     return note['body'] if note and 'body' in note else None
 
 
-def add_pdf_thumbnail(pdf_file_like: IO) -> Resource:
+def add_pdf_thumbnail(pdf_file_like: IO) -> Optional[Resource]:
     with tempfile.TemporaryDirectory() as tmpdir:
         with open(f"{tmpdir}/tmp.pdf", mode="wb") as f:
             f.write(pdf_file_like.read())
 
         cmd = f"pdftoppm -scale-to 300 -singlefile -png '{tmpdir}/tmp.pdf' '{tmpdir}/thumb'"
         ret = os.system(cmd)
+        os.remove(f"{tmpdir}/tmp.pdf")
         if ret != 0:
             print(f"Error executing command '{cmd}'")
-        os.remove(f"{tmpdir}/tmp.pdf")
+            return None
+        else:
+            file_name = f"{tmpdir}/thumb.png"
+            with open(file_name, 'rb') as f:
+                resource = add_resource('thumb.png', f, mime_type=PNG_MIME_TYPE)
 
-        file_name = f"{tmpdir}/thumb.png"
-        with open(file_name, 'rb') as f:
-            resource = add_resource('thumb.png', f, mime_type=PNG_MIME_TYPE)
-
-        os.remove(file_name)
-        return resource
+            os.remove(file_name)
+            return resource
 
 
 def set_note_body(note: Note, body: str) -> None:
@@ -354,7 +355,11 @@ def add_pdf_attachment(note: Note, file_name: str, file_like: IO) -> None:
     resource = add_resource(file_name, file_like, PDF_MIME_TYPE)
     file_like.seek(0)
     pdf_text = get_pdf_full_text(file_like)
-    append_to_note(note, f"[![{file_name}](:/{thumbnail['id']})](:/{resource['id']})\n\n{pdf_text}")
+
+    if thumbnail is None:
+        append_to_note(note, f"[{file_name}](:/{resource['id']})\n\n{pdf_text}")
+    else:
+        append_to_note(note, f"[![{file_name}](:/{thumbnail['id']})](:/{resource['id']})\n\n{pdf_text}")
 
 
 def add_img_attachment(note: Note, file_name: str, file_like: IO) -> None:
