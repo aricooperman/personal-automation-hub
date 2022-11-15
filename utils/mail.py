@@ -20,6 +20,8 @@ def send_mail(msg, to_addr):
     with smtplib.SMTP_SSL(host=mail_configs['smtp']['server'], port=mail_configs['smtp']['port'],
                           context=context) as server:
         server.login(mail_configs['smtp']['username'], mail_configs['smtp']['password'])
+        del msg["To"]
+        msg["To"] = to_addr
         server.send_message(msg, mail_configs['smtp']['username'], to_addr)
 
 
