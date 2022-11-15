@@ -169,7 +169,7 @@ def send_notes_to_kindle(notes: List[Note]):
                 maintype, subtype = resource['mime'].split('/', 1)
                 msg.add_attachment(file_bytes, maintype=maintype, subtype=subtype, filename=resource['title'])
 
-            print(f"Sending note attachments to Kindle ")
+            print(f" Sending note attachments to Kindle ")
             send_mail(msg, kindle_configs['email'])
             handle_processed_note(note)
         except Exception as exc:
