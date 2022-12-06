@@ -104,7 +104,7 @@ def add_file_comment(task_id, file_bytes, file_name, file_type):
 
     # call directly so we don't have to write file to disk
     data = {"token": api.token, 'file_name': file_name, 'file_type': file_type}
-    url = api.get_api_url() + "uploads/add"
+    url = "{0}/sync/{1}/uploads/add".format(api.api_endpoint, "v9")
     with BytesIO(file_bytes) as file_data:
         files = {"file": file_data}
         response = api.session.post(url, data=data, files=files)
