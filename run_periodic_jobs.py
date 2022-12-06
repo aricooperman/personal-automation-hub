@@ -9,6 +9,7 @@ from typing import List
 
 import dateutil.parser
 import pytz
+from todoist_api_python.models import Comment
 
 from configuration import joplin_configs, mail_configs, kindle_configs, todoist_configs, trello_configs
 from constants import LOCAL_TZ, DEFAULT_TZ
@@ -17,8 +18,8 @@ from service.joplin_api import sync, get_note_resources, get_resource_file, hand
     get_tag, get_notes_with_tag, get_note_tags, is_processed, \
     get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note, \
     remove_note_tag, get_notes_in_notebook, Note
-from service.todoist_api import get_all_projects, create_project, add_item, add_file_comment, get_label, \
-    get_items_with_label, archive_item, get_item_detail, get_project_details
+from service.todoist_api import get_all_projects, create_project, add_task, add_file_comment, get_label, \
+    get_tasks_with_label, complete_task, get_task_comments, get_project, get_project_tasks
 from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
     get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
 from utils.ocr import get_image_full_text
@@ -216,8 +217,7 @@ def send_notes_to_todoist(notes: List[Note]):
         due = None
         if 'todo_due' in note and note['todo_due'] > 0:
             dt = datetime.datetime.fromtimestamp(note['todo_due'] / 1000.0, tz=datetime.timezone.utc)
-            dt_str = dt.astimezone(LOCAL_TZ).strftime('%Y-%m-%dT%H:%M:%S')
-            due = {'date': dt_str, 'timezone': DEFAULT_TZ, 'is_recurring': False, 'lang': 'en'}
+            due = dt.astimezone(LOCAL_TZ).strftime('%Y-%m-%dT%H:%M:%S')
 
         content = note['title']
         if len(note['source_url']) > 0:
@@ -237,18 +237,18 @@ def send_notes_to_todoist(notes: List[Note]):
             if len(projects) > 1:
                 print(f"  Warning: task {note['title']} has more than one project tag {projects}, using first")
             proj_name = projects[0][1:]
-            project = next((proj for proj in get_all_projects() if proj['name'] == proj_name), None)
+            project = next((proj for proj in get_all_projects() if proj.name == proj_name), None)
             if project is None:
                 print(f"  Creating Todoist project '{proj_name}'")
                 project = create_project(proj_name)
 
         labels.append("From-Joplin")
-        task = add_item(content, comment=comment, due=due, labels=labels, project=project)
+        task = add_task(content, comment=comment, due=due, labels=labels, project=project)
 
         resources = get_note_resources(note)
         for resource in resources:
             file_bytes = get_resource_file(resource['id'])
-            add_file_comment(task['id'], file_bytes, resource['title'], resource['mime'])
+            add_file_comment(task, file_bytes, resource['title'], resource['mime'])
 
         handle_processed_note(note)
 
@@ -331,12 +331,12 @@ def process_joplin_ocr_tag():
         remove_note_tag(note, tag)
 
 
-def get_todoist_note_text(note):
-    if note['file_attachment'] is None:
-        return note['content']
+def get_todoist_comment_text(comment: Comment) -> str:
+    if comment.attachment is None:
+        return comment.content
     else:
-        link = f"[{note['file_attachment']['file_name']} - {note['file_attachment']['file_type']}]" \
-               f"({note['file_attachment']['file_url']})"
+        link = f"[{comment.attachment.file_name} - {comment.attachment.file_type}]" \
+               f"({comment.attachment.file_url})"
         return link
 
 
@@ -347,59 +347,54 @@ def process_todoist_joplin_tag():
     mapping = joplin_service_configs['tag-mapping']
 
     todoist_label = get_label(mapping[0])
-    items = get_items_with_label(todoist_label)
+    tasks = get_tasks_with_label(todoist_label)
 
-    items = [i for i in items if not i['checked'] and not i['is_deleted'] and not i['in_history']]
-
-    if len(items) > 0:
+    if len(tasks) > 0:
         todoist_joplin_tag = get_tag(mapping[1], auto_create=True)
         processed_tag = joplin_service_configs['processed-tag']
         todoist_processed_label = get_label(processed_tag) if processed_tag is not None else None
 
         if todoist_processed_label is not None:
-            items = [i for i in items if 'labels' not in i or todoist_processed_label['id'] not in i['labels']]
+            tasks = [i for i in tasks if i.labels is None or todoist_processed_label.name not in i.labels]
 
-        for item in items:
-            print(f" Copying task '{item['content']}' as note")
-            item_detail = get_item_detail(item['id'])
+        for task in tasks:
+            print(f" Copying task '{task.content}' as note")
 
-            body = item['description'] if 'description' in item and len(item['description']) > 0 else None
+            body = task.description if task.description is not None and len(task.description) > 0 else None
             due = None
-            if 'due' in item and item['due'] is not None and 'date' in item['due']:
-                dt = dateutil.parser.isoparse(item['due']['date'])
-                tz = item['due']['timezone'] if item['due']['timezone'] is not None else DEFAULT_TZ
+            if task.due is not None and (task.due.date is not None or task.due.datetime is not None):
+                dt = dateutil.parser.isoparse(task.due.datetime if task.due.datetime is not None else task.due.date)
+                tz = task.due.timezone if task.due.timezone is not None else DEFAULT_TZ
                 dt = dt.astimezone(pytz.timezone(tz))
                 due = int(dt.strftime('%s')) * 1000
 
-            joplin_note = create_new_note(item['content'], body, notebook_id=None, is_html=True, due_date=due)
+            joplin_note = create_new_note(task.content, body, notebook_id=None, is_html=True, due_date=due)
 
-            for comment in item_detail['notes']:
-                append_to_note(joplin_note, get_todoist_note_text(comment))
+            for comment in get_task_comments(task):
+                append_to_note(joplin_note, get_todoist_comment_text(comment))
 
-            todoist_project = item_detail['project']
-            todoist_project_details = get_project_details(todoist_project['id'])
-            child_items = [i for i in todoist_project_details['items'] if i['parent_id'] == item['id']]
+            todoist_project = get_project(task.project_id)
+            child_items = [i for i in get_project_tasks(todoist_project) if i.project_id == task.id]
             if len(child_items) > 0:
                 for child_item in child_items:
-                    append_note = 'Task: ' + child_item['content'] + " " + child_item['description']
-                    for child_note in get_item_detail(child_item['id'])['notes']:
-                        append_note += '\n' + get_todoist_note_text(child_note)
+                    append_note = 'Task: ' + child_item.content + " " + child_item.description
+                    for child_comment in get_task_comments(child_item):
+                        append_note += '\n' + get_todoist_comment_text(child_comment)
                     append_to_note(joplin_note, append_note)
-                    item_to_remove = next((i for i in items if i['id'] == child_item['id']), None)
+                    item_to_remove = next((i for i in tasks if i.id == child_item.id), None)
                     if item_to_remove is not None:
-                        items.remove(item_to_remove)
+                        tasks.remove(item_to_remove)
 
             add_note_tag(joplin_note, todoist_joplin_tag)
 
-            joplin_tag = next((t for t in get_tags() if t['title'][1:].lower() == todoist_project['name'].lower()),
-                              None)
-            if joplin_tag is None and todoist_project['name'] != 'Inbox':
-                joplin_tag = create_tag('#' + todoist_project['name'])
+            joplin_tag = next((t for t in get_tags() if t['title'][1:].lower() == todoist_project.name.lower()), None)
+            if joplin_tag is None and todoist_project.name != 'Inbox':
+                joplin_tag = create_tag('#' + todoist_project.name)
 
             if joplin_tag is not None:
                 add_note_tag(joplin_note, joplin_tag)
 
-            archive_item(item)
+            complete_task(task)
 
 
 print("Start: ", str(datetime.datetime.now()))

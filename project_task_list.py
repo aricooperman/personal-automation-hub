@@ -1,6 +1,5 @@
 import os
 from email import encoders
-from email.message import EmailMessage
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -14,7 +13,8 @@ from todoist.models import Project
 
 from service.joplin_api import get_notes_with_tag, Tag, get_active_projects, get_default_notebook, get_notes_in_notebook
 from utils.mail import send_mail
-from service.todoist_api import get_active_projects as get_todoist_projects, get_project_details, get_labels
+from service.todoist_api import get_active_projects as get_todoist_projects, get_labels, get_project_tasks, \
+    get_project_sections
 from configuration import mail_configs
 
 file_str = StringIO()
@@ -93,8 +93,7 @@ def print_todoist_project_tasks(projects: List[Project], level: int, todoist_chi
         joplin_project = next((p for p in joplin_projects if p['title'].lower() == project['name'].lower() or
                                p['title'][1:].lower() == project['name'].lower()), None)
 
-        proj_details = get_project_details(project['id'])
-        items = [i for i in proj_details['items'] if not i['checked'] and i['due'] is None]
+        items = [i for i in get_project_tasks(project) if not i.is_completed and i.due is None]
 
         if len(items) == 0 and child_projects is None and joplin_project is None:
             continue
@@ -105,8 +104,7 @@ def print_todoist_project_tasks(projects: List[Project], level: int, todoist_chi
                          groupby(sorted(items, key=lambda i: i['section_id'] if i['section_id'] is not None else -1),
                                  key=lambda i: i['section_id'] if i['section_id'] is not None else -1)}
 
-        relevant_sections = [s for s in proj_details['sections'] if
-                             s['name'] != 'Scheduled' and not s['is_archived'] and not s['is_deleted']]
+        relevant_sections = [s for s in get_project_sections(project) if s.name != 'Scheduled']
 
         if -1 in section_items:
             print_items(section_items[-1], None, 0, labels)
@@ -127,14 +125,14 @@ def print_todoist_project_tasks(projects: List[Project], level: int, todoist_chi
 
 def generate_task_list():
     todoist_projects = get_todoist_projects()
-    todoist_top_level_projects = [p for p in todoist_projects if p['parent_id'] is None]
+    todoist_top_level_projects = [p for p in todoist_projects if p.parent_id is None]
     todoist_child_projects = {p_id: list(grouper) for p_id, grouper in
-                              groupby(sorted([p for p in todoist_projects if p['parent_id'] is not None],
+                              groupby(sorted([p for p in todoist_projects if p.parent_id is not None],
                                              key=lambda p: p['parent_id']), key=lambda p: p['parent_id'])}
     joplin_projects = get_active_projects()
     joplin_projects.append(get_default_notebook())
 
-    labels = {label['id']: label['name'] for label in get_labels()}
+    labels = {label.id: label.name for label in get_labels()}
 
     print_table_header()
 
