@@ -2,9 +2,8 @@ from io import BytesIO
 from typing import Optional
 
 import requests
-from todoist.models import Section
 from todoist_api_python.api import TodoistAPI
-from todoist_api_python.models import Project, Label, Task, Comment
+from todoist_api_python.models import Project, Label, Task, Comment, Section
 
 from configuration import todoist_configs
 
