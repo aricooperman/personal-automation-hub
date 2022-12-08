@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 
 import datetime
-import re
 import traceback
 from email.message import EmailMessage
 from io import BytesIO, StringIO
 from typing import List
 
 import dateutil.parser
+import markdown
 import pytz
 from todoist_api_python.models import Comment
 
@@ -19,7 +19,7 @@ from service.joplin_api import sync, get_note_resources, get_resource_file, hand
     get_notebook, create_new_note, add_note_tags, add_attachment, get_tags, create_tag, add_note_tag, append_to_note, \
     remove_note_tag, get_notes_in_notebook, Note
 from service.todoist_api import get_all_projects, create_project, add_task, add_file_comment, get_label, \
-    get_tasks_with_label, complete_task, get_task_comments, get_project, get_project_tasks
+    get_tasks_with_label, complete_task, get_task_comments, get_project, get_project_tasks, add_comment
 from utils.mail import fetch_mail, send_mail, archive_mail, get_subject, get_title_from_subject, \
     get_tags_from_subject, get_notebook_from_subject, determine_mime_type, get_email_body
 from utils.ocr import get_image_full_text
@@ -223,11 +223,6 @@ def send_notes_to_todoist(notes: List[Note]):
         if len(note['source_url']) > 0:
             content = f"[{content}]({note['source_url']})"
 
-        comment = None
-        if note['body'] and len(note['body']) > 0:
-            comment = note['body']
-            comment = re.sub(r'!?\[.*\]\(:/[a-f0-9]+\)', '', comment).strip()
-
         tags = get_note_tags(note)
         labels = [tag['title'] for tag in tags if tag['title'] not in FILTERED_JOPLIN_TAGS]
         projects = [label for label in labels if label.startswith('#')]
@@ -243,7 +238,10 @@ def send_notes_to_todoist(notes: List[Note]):
                 project = create_project(proj_name)
 
         labels.append("From-Joplin")
-        task = add_task(content, comment=comment, due=due, labels=labels, project=project)
+        task = add_task(content, due=due, labels=labels, project=project)
+
+        if note['body'] and len(note['body']) > 0:
+            add_comment(task, note['body'])
 
         resources = get_note_resources(note)
         for resource in resources:

@@ -1,6 +1,8 @@
+import re
 from io import BytesIO
 from typing import Optional
 
+import markdown
 import requests
 from todoist_api_python.api import TodoistAPI
 from todoist_api_python.models import Project, Label, Task, Comment, Section
@@ -51,16 +53,9 @@ def get_tasks_with_label(label: Label) -> list[Task]:
     return api.get_tasks(label=label.name)
 
 
-def add_task(content: str, comment: str = None, due: str = None, labels: list[str] = None, project: Project = None):
+def add_task(content: str, due: str = None, labels: list[str] = None, project: Project = None):
     project_id = project.id if project else None
-
-    task = api.add_task(content, due_datetime=due, labels=labels, project_id=project_id)
-
-    if comment:
-        c = comment if len(comment) <= 15000 else comment[0:14997] + '...'
-        api.add_comment(c, task_id=task.id)
-
-    return task
+    return api.add_task(content, due_datetime=due, labels=labels, project_id=project_id)
 
 
 def complete_task(task: Task) -> None:
@@ -76,7 +71,7 @@ def get_task(item_id: str) -> Task:
     return api.get_task(item_id)
 
 
-def add_file_comment(task: Task, file_bytes, file_name: str, file_type):
+def add_file_comment(task: Task, file_bytes, file_name: str, file_type) -> Comment:
     data = {"token": token, 'file_name': file_name, 'file_type': file_type}
     url = "https://api.todoist.com/sync/v9/uploads/add"
     with BytesIO(file_bytes) as file_data:
@@ -85,8 +80,19 @@ def add_file_comment(task: Task, file_bytes, file_name: str, file_type):
             raise RuntimeError(
                 f"Received bad status code ({response.status_code} in post response for {response.request}")
         file_upload = response.json()
-        api.add_comment(task_id=task.id, content='', attachment=file_upload)
+        content = file_name if file_name else "no_name"
+        return api.add_comment(task_id=task.id, content=content, attachment=file_upload)
 
+
+def add_comment(task: Task, comment: str) -> Comment:
+    if re.search("\\| ---+ \\|", comment) is not None:
+        html = markdown.markdown(comment, extensions=['tables'])
+        comment = f"<html><head></head><body>{html}</body></html>"
+        return add_file_comment(task, bytes(comment, 'utf-8'), "note.html", "text/html")
+    else:
+        # comment = re.sub(r'!?\[.*\]\(:/[a-f0-9]+\)', '', comment).strip()
+        comment = comment if len(comment) <= 15000 else comment[0:14997] + '...'
+        return api.add_comment(comment, task_id=task.id)
 
 # def get_file_comment(comment_id: str, last_id: str = None):
 #     uploads = api.uploads.get(limit=50, last_id=last_id)

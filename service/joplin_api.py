@@ -216,11 +216,14 @@ def create_new_note(title: str, body: str, notebook_id: Optional[int] = None, is
     return note
 
 
-def get_active_projects() -> List[Tag]:
-    return [t for t in get_tags() if len(t['title']) > 1 and t['title'][0] == '#' and t['title'][1] != '#']
+def get_active_projects() -> List[Notebook]:
+    active_project = get_notebook(".Active")
+    if active_project is None:
+        return []
+    return [notebook for notebook in get_notebooks() if notebook['parent_id'] == active_project['id']]
 
 
-def get_inactive_projects() -> List[Tag]:
+def get_inactive_projects() -> List[Notebook]:
     return [t for t in get_tags() if len(t['title']) > 2 and t['title'][0] == '#' and t['title'][1] == '#']
 
 
@@ -492,8 +495,7 @@ def get_resource(resource_id: str) -> Resource:
 
 
 def get_resource_file(resource_id):
-    file = get_item(RESOURCES_RESOURCE_FILE_API_URL.format(resource_id=resource_id))
-    return file
+    return get_item(RESOURCES_RESOURCE_FILE_API_URL.format(resource_id=resource_id))
 
 
 def move_note(note, nb_name):
