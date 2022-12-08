@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Union
 
 import markdown
 import pdfkit
-from todoist.models import Project
+from todoist_api_python.models import Project
 
 from service.joplin_api import get_notes_with_tag, Tag, get_active_projects, get_default_notebook, get_notes_in_notebook
 from utils.mail import send_mail

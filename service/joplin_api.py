@@ -492,8 +492,7 @@ def get_resource(resource_id: str) -> Resource:
 
 
 def get_resource_file(resource_id):
-    file = get_item(RESOURCES_RESOURCE_FILE_API_URL.format(resource_id=resource_id))
-    return file
+    return get_item(RESOURCES_RESOURCE_FILE_API_URL.format(resource_id=resource_id))
 
 
 def move_note(note, nb_name):
