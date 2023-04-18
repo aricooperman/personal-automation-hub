@@ -1,5 +1,4 @@
 import os
-from datetime import datetime
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -43,45 +42,40 @@ def print_table_row(project: str, section: str, order: str, priority: Optional[i
                    f"{label if label is not None else ''} |\n")
 
 
-def print_todoist_tasks(tasks: List[Task], section_name: Optional[str], level: int):
-    task_ids = [task.id for task in tasks]
-    top_level_items = [task for task in tasks if task.parent_id not in task_ids]
-    child_items = {pt_id: list(grouper) for pt_id, grouper in
-                   groupby(sorted([task for task in tasks if task.parent_id in task_ids],
-                                  key=lambda task: task.parent_id), key=lambda task: task.parent_id)}
-    remaining_tasks = tasks[:]
+def print_items(items: List[dict], section_name: Optional[str], level: int, labels: Dict[int, str]):
+    item_ids = [i['id'] for i in items]
+    top_level_items = [i for i in items if i['parent_id'] not in item_ids]
+    child_items = {pi_id: list(grouper) for pi_id, grouper in
+                   groupby(sorted([i for i in items if i['parent_id'] in item_ids],
+                                  key=lambda i: i['parent_id']), key=lambda i: i['parent_id'])}
 
     if section_name is not None:
         print_section(section_name)
 
+    # if level == 0:
+    #     print_table_header()
+
     n = 0
-    for task in sorted(top_level_items, key=lambda task: (-task.priority, -task.order)):
+    for item in sorted(top_level_items, key=lambda i: (-i['priority'], -i['child_order'])):
         n += 1
-        priority = None if task.priority == 1 else 5 - task.priority
-        label = "" if len(task.labels) == 0 else (" - " + ", ".join(task.labels))
+        priority = None if item['priority'] == 1 else 5 - item['priority']
+        label = "" if len(item['labels']) == 0 \
+            else (" - " + ", ".join([labels[label_id] for label_id in item['labels']]))
 
         indent = ("&nbsp;&nbsp;&nbsp;&nbsp;" * level)
-        if level % 2 == 0:
-            order = str(n)
-        else:
-            i = (n - 1) // 26
-            prefix = "" if i == 0 else chr(ord('`') + i)
-            order = prefix + chr(ord('`') + (n % 26))  # '@'
-        print_table_row('', '', indent + order, priority, indent + task.content.replace("|", "&vert;"), label)
-        remaining_tasks.remove(task)
+        order = str(n) if level % 2 == 0 else chr(ord('`') + n)  # '@'
+        print_table_row('', '', indent + order, priority, indent + item['content'].replace("|", "&vert;"), label)
 
-        if task.id in child_items:
-            child_items_tasks = child_items[task.id]
-            print_todoist_tasks(child_items_tasks, None, level + 1)
-            for t in child_items_tasks:
-                remaining_tasks.remove(t)
-
-    # if len(remaining_tasks) > 0:
-    #     print(remaining_tasks)
+        if item['id'] in child_items:
+            print_items(child_items[item['id']], None, level + 1, labels)
 
 
-def print_joplin_project_tasks(project: Union[Tag, Notebook], project_name: Optional[str], level: int):
-    notes = get_notes_in_notebook(project)
+def print_joplin_project_tasks(project: Union[Tag, Project], project_name: Optional[str], level: int):
+    if project['title'] != 'Inbox':
+        notes = get_notes_with_tag(project)
+    else:
+        notes = get_notes_in_notebook(project)
+
     notes = [note for note in notes if not note['is_todo']]
 
     if len(notes) > 0:
@@ -94,43 +88,39 @@ def print_joplin_project_tasks(project: Union[Tag, Notebook], project_name: Opti
             print_table_row('', '', '--', None, note['title'], '')
 
 
-def print_todoist_project_tasks(projects: List[Project], level: int, todoist_child_projects: Dict[str, List[Project]],
-                                joplin_projects: List[Tag]):
-    for project in sorted(projects, key=lambda p: p.order if p.order is not None else 0):
-        child_projects = todoist_child_projects[project.id] if project.id in todoist_child_projects else None
-        joplin_project = next((p for p in joplin_projects if p['title'].lower() == project.name.lower() or
-                               p['title'][1:].lower() == project.name.lower()), None)
+def print_todoist_project_tasks(projects: List[Project], level: int, todoist_child_projects: Dict[int, List[Project]],
+                                joplin_projects: List[Tag], labels: Dict[int, str]):
+    for project in sorted(projects, key=lambda p: p['child_order']):
+        child_projects = todoist_child_projects[project['id']] if project['id'] in todoist_child_projects else None
+        joplin_project = next((p for p in joplin_projects if p['title'].lower() == project['name'].lower() or
+                               p['title'][1:].lower() == project['name'].lower()), None)
 
-        project_tasks = get_project_tasks(project)
-        parent_ids = list(map(lambda task: task.parent_id, project_tasks))
-        child_counts = dict((x, parent_ids.count(x)) for x in set(parent_ids) if x is not None)
-        tasks = [task for task in project_tasks if not task.is_completed and
-                 (task.due is None or task.id in child_counts)]
+        items = [i for i in get_project_tasks(project) if not i.is_completed and i.due is None]
 
-        if len(tasks) == 0 and child_projects is None and joplin_project is None:
+        if len(items) == 0 and child_projects is None and joplin_project is None:
             continue
 
-        print_project(level, project.name)
+        print_project(level, project['name'])
 
-        section_tasks = {s_id: list(grouper) for s_id, grouper in
-                         groupby(sorted(tasks, key=lambda task: task.section_id if task.section_id is not None else ""),
-                                 key=lambda task: task.section_id if task.section_id is not None else "")}
+        section_items = {s_id: list(grouper) for s_id, grouper in
+                         groupby(sorted(items, key=lambda i: i['section_id'] if i['section_id'] is not None else -1),
+                                 key=lambda i: i['section_id'] if i['section_id'] is not None else -1)}
 
         relevant_sections = [s for s in get_project_sections(project) if s.name != 'Scheduled']
 
-        if "" in section_tasks:
-            print_todoist_tasks(section_tasks[""], None, 0)
+        if -1 in section_items:
+            print_items(section_items[-1], None, 0, labels)
 
-        for section in sorted(relevant_sections, key=lambda sec: sec.order):
-            if section.id in section_tasks:
-                print_todoist_tasks(section_tasks[section.id], section.name, 0)
+        for section in sorted(relevant_sections, key=lambda s: s['section_order']):
+            if section['id'] in section_items:
+                print_items(section_items[section['id']], section['name'], 0, labels)
 
         if child_projects:
-            print_todoist_project_tasks(child_projects, level + 1, todoist_child_projects, joplin_projects)
+            print_todoist_project_tasks(child_projects, level + 1, todoist_child_projects, joplin_projects, labels)
 
         if joplin_project is not None:
             joplin_projects.remove(joplin_project)
-            print_joplin_project_tasks(joplin_project, project.name, level + 1)
+            print_joplin_project_tasks(joplin_project, project['name'], level + 1)
 
         # file_str.write('\n')
 
@@ -140,43 +130,19 @@ def generate_task_list():
     todoist_top_level_projects = [p for p in todoist_projects if p.parent_id is None]
     todoist_child_projects = {p_id: list(grouper) for p_id, grouper in
                               groupby(sorted([p for p in todoist_projects if p.parent_id is not None],
-                                             key=lambda p: p.parent_id), key=lambda p: p.parent_id)}
+                                             key=lambda p: p['parent_id']), key=lambda p: p['parent_id'])}
     joplin_projects = get_active_projects()
     joplin_projects.append(get_default_notebook())
 
+    labels = {label.id: label.name for label in get_labels()}
+
     print_table_header()
 
-    print_todoist_project_tasks(todoist_top_level_projects, 0, todoist_child_projects, joplin_projects)
+    print_todoist_project_tasks(todoist_top_level_projects, 0, todoist_child_projects, joplin_projects, labels)
 
     for joplin_project in joplin_projects:
         print_joplin_project_tasks(joplin_project, joplin_project['title'], 0)
         # file_str.write('\n')
-
-
-def send_email(html_str: str):
-    msg = MIMEMultipart('alternative')
-    part = MIMEText(html_str, 'html')
-    msg.attach(part)
-    part = MIMEBase('application', 'octet-stream')
-    part.set_payload((open('task_list.pdf', "rb")).read())
-    encoders.encode_base64(part)
-    part.add_header('Content-Disposition', "attachment; filename= %s" % 'task_list.pdf')
-    msg.attach(part)
-    msg['Subject'] = 'Task List'
-    send_mail(msg, mail_configs['smtp']['username'])
-
-
-def add_todoist_task():
-    dt = datetime.now()
-    due = dt.astimezone(LOCAL_TZ).strftime('%Y-%m-%d')
-    task = add_task("Project List", due=due)
-    with open('task_list.pdf', mode="rb") as pdf_file:
-        contents = pdf_file.read()
-        add_file_comment(task, contents, 'task_list.pdf', PDF_MIME_TYPE)
-
-
-def print_tasks():
-    os.system("lp task_list.pdf")
 
 
 if __name__ == '__main__':
@@ -188,17 +154,7 @@ if __name__ == '__main__':
     html = markdown.markdown(file_str.getvalue(), extensions=['tables'])
     html = f"""\
         <html>
-          <head>
-            <style>
-                td, th {{
-                   border: 1px solid #000;
-                }}
-                
-                table {{
-                    border-collapse: collapse;
-                }}
-            </style>
-          </head>
+          <head></head>
           <body>
             {html}
           </body>
@@ -210,8 +166,17 @@ if __name__ == '__main__':
 
     pdfkit.from_string(html, 'task_list.pdf')
 
-    # send_email(html)
-    # add_todoist_task()
-    # print_tasks()
+    msg = MIMEMultipart('alternative')
+    part = MIMEText(html, 'html')
+    msg.attach(part)
 
-    # os.remove('task_list.pdf')
+    part = MIMEBase('application', 'octet-stream')
+    part.set_payload((open('task_list.pdf', "rb")).read())
+    encoders.encode_base64(part)
+    part.add_header('Content-Disposition', "attachment; filename= %s" % 'task_list.pdf')
+    msg.attach(part)
+
+    msg['Subject'] = 'Task List'
+    send_mail(msg, mail_configs['smtp']['username'])
+
+    os.remove('task_list.pdf')
