@@ -143,7 +143,8 @@ def determine_mime_type(filename: str, content_type: str) -> MimeType:
         return MimeType.PDF
     elif filename.endswith(".jpg") or filename.endswith(".jpeg") or content_type == "image/jpeg" \
             or filename.endswith(".png") or content_type == PNG_MIME_TYPE \
-            or filename.endswith(".gif") or content_type == "image/gif":
+            or filename.endswith(".gif") or content_type == "image/gif" \
+            or filename.endswith(".webp") or content_type == "image/webp":
         return MimeType.IMG
     else:
         # print(f"Unhandled attachment content type: {content_type}")
