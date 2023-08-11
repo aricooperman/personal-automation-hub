@@ -11,13 +11,12 @@ import markdown
 import pdfkit
 from todoist_api_python.models import Project, Task
 
-from constants import LOCAL_TZ, PDF_MIME_TYPE
-from service.joplin_api import get_notes_with_tag, Tag, get_active_projects, get_default_notebook, \
-    get_notes_in_notebook, Notebook
-from utils.mail import send_mail
-from service.todoist_api import get_active_projects as get_todoist_projects, get_labels, get_project_tasks, \
-    get_project_sections, add_task, add_file_comment
 from configuration import mail_configs
+from service.joplin_api import get_notes_with_tag, Tag, get_active_projects, get_default_notebook, \
+    get_notes_in_notebook
+from service.todoist_api import get_active_projects as get_todoist_projects, get_labels, get_project_tasks, \
+    get_project_sections
+from utils.mail import send_mail
 
 file_str = StringIO()
 
@@ -42,12 +41,12 @@ def print_table_row(project: str, section: str, order: str, priority: Optional[i
                    f"{label if label is not None else ''} |\n")
 
 
-def print_items(items: List[dict], section_name: Optional[str], level: int, labels: Dict[int, str]):
-    item_ids = [i['id'] for i in items]
-    top_level_items = [i for i in items if i['parent_id'] not in item_ids]
+def print_items(items: List[Task], section_name: Optional[str], level: int):
+    item_ids = [i.id for i in items]
+    top_level_items = [i for i in items if i.parent_id not in item_ids]
     child_items = {pi_id: list(grouper) for pi_id, grouper in
-                   groupby(sorted([i for i in items if i['parent_id'] in item_ids],
-                                  key=lambda i: i['parent_id']), key=lambda i: i['parent_id'])}
+                   groupby(sorted([i for i in items if i.parent_id in item_ids],
+                                  key=lambda i: i.parent_id), key=lambda i: i.parent_id)}
 
     if section_name is not None:
         print_section(section_name)
@@ -56,26 +55,21 @@ def print_items(items: List[dict], section_name: Optional[str], level: int, labe
     #     print_table_header()
 
     n = 0
-    for item in sorted(top_level_items, key=lambda i: (-i['priority'], -i['child_order'])):
+    for item in sorted(top_level_items, key=lambda i: (-i.priority, -i.order)):
         n += 1
-        priority = None if item['priority'] == 1 else 5 - item['priority']
-        label = "" if len(item['labels']) == 0 \
-            else (" - " + ", ".join([labels[label_id] for label_id in item['labels']]))
+        priority = None if item.priority == 1 else 5 - item.priority
+        label = "" if len(item.labels) == 0 else (" - " + ", ".join(item.labels))
 
         indent = ("&nbsp;&nbsp;&nbsp;&nbsp;" * level)
         order = str(n) if level % 2 == 0 else chr(ord('`') + n)  # '@'
-        print_table_row('', '', indent + order, priority, indent + item['content'].replace("|", "&vert;"), label)
+        print_table_row('', '', indent + order, priority, indent + item.content.replace("|", "&vert;"), label)
 
-        if item['id'] in child_items:
-            print_items(child_items[item['id']], None, level + 1, labels)
+        if item.id in child_items:
+            print_items(child_items[item.id], None, level + 1)
 
 
 def print_joplin_project_tasks(project: Union[Tag, Project], project_name: Optional[str], level: int):
-    if project['title'] != 'Inbox':
-        notes = get_notes_with_tag(project)
-    else:
-        notes = get_notes_in_notebook(project)
-
+    notes = get_notes_in_notebook(project)
     notes = [note for note in notes if not note['is_todo']]
 
     if len(notes) > 0:
@@ -88,39 +82,39 @@ def print_joplin_project_tasks(project: Union[Tag, Project], project_name: Optio
             print_table_row('', '', '--', None, note['title'], '')
 
 
-def print_todoist_project_tasks(projects: List[Project], level: int, todoist_child_projects: Dict[int, List[Project]],
-                                joplin_projects: List[Tag], labels: Dict[int, str]):
-    for project in sorted(projects, key=lambda p: p['child_order']):
-        child_projects = todoist_child_projects[project['id']] if project['id'] in todoist_child_projects else None
-        joplin_project = next((p for p in joplin_projects if p['title'].lower() == project['name'].lower() or
-                               p['title'][1:].lower() == project['name'].lower()), None)
+def print_todoist_project_tasks(projects: List[Project], level: int, todoist_child_projects: Dict[str, List[Project]],
+                                joplin_projects: List[Tag]):
+    for project in sorted(projects, key=lambda p: p.order):
+        child_projects = todoist_child_projects[project.id] if project.id in todoist_child_projects else None
+        joplin_project = next((p for p in joplin_projects if p['title'].lower() == project.name.lower() or
+                               p['title'][1:].lower() == project.name.lower()), None)
 
         items = [i for i in get_project_tasks(project) if not i.is_completed and i.due is None]
 
         if len(items) == 0 and child_projects is None and joplin_project is None:
             continue
 
-        print_project(level, project['name'])
+        print_project(level, project.name)
 
         section_items = {s_id: list(grouper) for s_id, grouper in
-                         groupby(sorted(items, key=lambda i: i['section_id'] if i['section_id'] is not None else -1),
-                                 key=lambda i: i['section_id'] if i['section_id'] is not None else -1)}
+                         groupby(sorted(items, key=lambda i: i.section_id if i.section_id is not None else ""),
+                                 key=lambda i: i.section_id if i.section_id is not None else "")}
 
         relevant_sections = [s for s in get_project_sections(project) if s.name != 'Scheduled']
 
         if -1 in section_items:
-            print_items(section_items[-1], None, 0, labels)
+            print_items(section_items[-1], None, 0)
 
-        for section in sorted(relevant_sections, key=lambda s: s['section_order']):
-            if section['id'] in section_items:
-                print_items(section_items[section['id']], section['name'], 0, labels)
+        for section in sorted(relevant_sections, key=lambda s: s.order):
+            if section.id in section_items:
+                print_items(section_items[section.id], section.name, 0)
 
         if child_projects:
-            print_todoist_project_tasks(child_projects, level + 1, todoist_child_projects, joplin_projects, labels)
+            print_todoist_project_tasks(child_projects, level + 1, todoist_child_projects, joplin_projects)
 
         if joplin_project is not None:
             joplin_projects.remove(joplin_project)
-            print_joplin_project_tasks(joplin_project, project['name'], level + 1)
+            print_joplin_project_tasks(joplin_project, project.name, level + 1)
 
         # file_str.write('\n')
 
@@ -130,15 +124,13 @@ def generate_task_list():
     todoist_top_level_projects = [p for p in todoist_projects if p.parent_id is None]
     todoist_child_projects = {p_id: list(grouper) for p_id, grouper in
                               groupby(sorted([p for p in todoist_projects if p.parent_id is not None],
-                                             key=lambda p: p['parent_id']), key=lambda p: p['parent_id'])}
+                                             key=lambda p: p.parent_id), key=lambda p: p.parent_id)}
     joplin_projects = get_active_projects()
     joplin_projects.append(get_default_notebook())
 
-    labels = {label.id: label.name for label in get_labels()}
-
     print_table_header()
 
-    print_todoist_project_tasks(todoist_top_level_projects, 0, todoist_child_projects, joplin_projects, labels)
+    print_todoist_project_tasks(todoist_top_level_projects, 0, todoist_child_projects, joplin_projects)
 
     for joplin_project in joplin_projects:
         print_joplin_project_tasks(joplin_project, joplin_project['title'], 0)
