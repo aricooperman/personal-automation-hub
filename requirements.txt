@@ -1,6 +1,7 @@
-PyYAML~=6.0.1
+PyYAML~=6.0.2
 requests~=2.31.0
 pytz~=2021.3
-Markdown~=3.6
+Markdown~=3.7
 pdfkit~=1.0.0
-todoist-api-python~=2.1.5
+todoist_api_python~=2.1.5
+python-dateutil~=2.9.0.post0

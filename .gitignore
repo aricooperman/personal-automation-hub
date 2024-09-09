@@ -2,3 +2,4 @@
 /vendor/
 /.idea/
 /local_deploy.sh
+/venv/
