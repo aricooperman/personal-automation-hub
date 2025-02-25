@@ -189,7 +189,7 @@ def process_joplin_todoist_tag():
 
     notes = get_notes_with_tag(tag)
     if len(notes) > 0:
-        send_notes_to_todoist(notes)
+        send_notes_to_todoist_from_joplin(notes)
 
 
 def process_joplin_todoist_notebook():
@@ -204,10 +204,10 @@ def process_joplin_todoist_notebook():
 
     notes = get_notes_in_notebook(notebook)
     if len(notes) > 0:
-        send_notes_to_todoist(notes)
+        send_notes_to_todoist_from_joplin(notes)
 
 
-def send_notes_to_todoist(notes: List[Note]):
+def send_notes_to_todoist_from_joplin(notes: List[Note]):
     for note in notes:
         if is_processed(note):
             continue
@@ -237,11 +237,12 @@ def send_notes_to_todoist(notes: List[Note]):
                 print(f"  Creating Todoist project '{proj_name}'")
                 project = create_project(proj_name)
 
-        labels.append("From-Joplin")
         task = add_task(content, due=due, labels=labels, project=project)
 
         if note['body'] and len(note['body']) > 0:
             add_comment(task, note['body'])
+
+        add_comment(task, f"joplin://x-callback-url/openNote?id={note['id']}")
 
         resources = get_note_resources(note)
         for resource in resources:
