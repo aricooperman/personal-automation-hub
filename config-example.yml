@@ -37,6 +37,12 @@ joplin:
 file:
   archive: <path>
 
+obsidian:
+  vault-path: <local path to vault>
+  default-notebook: Inbox
+  auto-create-notebook: true
+  mailbox: Obsidian
+
 todoist:
   api-key: <api key>
   joplin-tag: <tag name>
