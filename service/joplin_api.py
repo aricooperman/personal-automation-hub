@@ -68,7 +68,7 @@ class Tag(TypedDict):
     title: str
 
 
-class Note(TypedDict):
+class JoplinNote(TypedDict):
     id: str
     parent_id: str
     title: str
@@ -192,7 +192,7 @@ def create_notebook(notebook_name):
 
 
 def create_new_note(title: str, body: str, notebook_id: Optional[int] = None, is_html: bool = False, creation_time=None,
-                    due_date=None) -> Note:
+                    due_date=None) -> JoplinNote:
     payload = {'title': title}
     if body is not None and len(body) > 0:
         if is_html:
@@ -242,13 +242,13 @@ def delete_tag(tag: Tag):
     return out
 
 
-def add_note_tag(note: Note, tag: Tag) -> None:
+def add_note_tag(note: JoplinNote, tag: Tag) -> None:
     tag_id = tag['id']
     print(f"   Adding tag '{tag['title']} to note {note['title']}'")
     post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note['id']})
 
 
-def add_note_tags(note: Note, tags: List[str]) -> None:
+def add_note_tags(note: JoplinNote, tags: List[str]) -> None:
     if len(tags) > 0:
         existing_tags = get_tags()
         for tag in tags:
@@ -264,11 +264,11 @@ def add_note_tags(note: Note, tags: List[str]) -> None:
             post_item(TAG_NOTE_API_URL.format(tag_id=tag_id), {'id': note['id']})
 
 
-def remove_note_tag(note: Note, tag: Tag) -> None:
+def remove_note_tag(note: JoplinNote, tag: Tag) -> None:
     delete_item(TAG_REMOVE_FROM_NOTE_API_URL.format(tag_id=tag['id'], note_id=note['id']))
 
 
-def add_generic_attachment(note: Note, file_name: str, file_like: IO) -> Resource:
+def add_generic_attachment(note: JoplinNote, file_name: str, file_like: IO) -> Resource:
     resource = add_resource(file_name, file_like)
     append_to_note(note, f"[{file_name}](:/{resource['id']})")
     return resource
@@ -293,7 +293,7 @@ def delete_note(note):
     delete_item(NOTES_NOTE_API_URL.format(note_id=note['id']))
 
 
-def attach_text_to_note(note: Note, file_like: IO, is_html: bool = False) -> None:
+def attach_text_to_note(note: JoplinNote, file_like: IO, is_html: bool = False) -> None:
     text = file_like.read()
     if is_html:
         # Create temporary note to convert html to md consistently
@@ -304,7 +304,7 @@ def attach_text_to_note(note: Note, file_like: IO, is_html: bool = False) -> Non
     append_to_note(note, text)
 
 
-def get_note_body(note: Note) -> Optional[str]:
+def get_note_body(note: JoplinNote) -> Optional[str]:
     params = get_default_params()
     params['fields'] = 'body'
     note = get_item(NOTES_NOTE_API_URL.format(note_id=note['id']), params=params)
@@ -331,11 +331,11 @@ def add_pdf_thumbnail(pdf_file_like: IO) -> Optional[Resource]:
             return resource
 
 
-def set_note_body(note: Note, body: str) -> None:
+def set_note_body(note: JoplinNote, body: str) -> None:
     update_item(NOTES_NOTE_API_URL.format(note_id=note['id']), {'body': body})
 
 
-def append_to_note(note: Note, text: str) -> None:
+def append_to_note(note: JoplinNote, text: str) -> None:
     if not text:
         return
 
@@ -352,7 +352,7 @@ def append_to_note(note: Note, text: str) -> None:
     set_note_body(note, orig_body)
 
 
-def add_pdf_attachment(note: Note, file_name: str, file_like: IO) -> None:
+def add_pdf_attachment(note: JoplinNote, file_name: str, file_like: IO) -> None:
     thumbnail = add_pdf_thumbnail(file_like)
     file_like.seek(0)
     resource = add_resource(file_name, file_like, PDF_MIME_TYPE)
@@ -365,7 +365,7 @@ def add_pdf_attachment(note: Note, file_name: str, file_like: IO) -> None:
         append_to_note(note, f"[![{file_name}](:/{thumbnail['id']})](:/{resource['id']})\n\n{pdf_text}")
 
 
-def add_img_attachment(note: Note, file_name: str, file_like: IO) -> None:
+def add_img_attachment(note: JoplinNote, file_name: str, file_like: IO) -> None:
     resource = add_resource(file_name, file_like)
     body = f"![{file_name}](:/{resource['id']})"
     file_like.seek(0)
@@ -375,7 +375,7 @@ def add_img_attachment(note: Note, file_name: str, file_like: IO) -> None:
     append_to_note(note, body)
 
 
-def add_attachment(note: Note, file_name: str, file_like: IO, mime_type: MimeType):
+def add_attachment(note: JoplinNote, file_name: str, file_like: IO, mime_type: MimeType):
     if mime_type == MimeType.TEXT:
         attach_text_to_note(note, file_like, False)
     elif mime_type == MimeType.HTML:
@@ -463,7 +463,7 @@ def sync():
     pass  # TODO
 
 
-def get_notes_in_notebook(notebook: Notebook) -> List[Note]:
+def get_notes_in_notebook(notebook: Notebook) -> List[JoplinNote]:
     if not notebook:
         return []
 
@@ -471,7 +471,7 @@ def get_notes_in_notebook(notebook: Notebook) -> List[Note]:
     return notes
 
 
-def get_notes_with_tag(tag: Tag) -> List[Note]:
+def get_notes_with_tag(tag: Tag) -> List[JoplinNote]:
     if not tag:
         return []
 
@@ -479,12 +479,12 @@ def get_notes_with_tag(tag: Tag) -> List[Note]:
     return notes
 
 
-def get_note_tags(note: Note) -> List[Tag]:
+def get_note_tags(note: JoplinNote) -> List[Tag]:
     tags = get_items(NOTES_TAGS_API_URL.format(note_id=note['id']))
     return tags
 
 
-def get_note_resources(note: Note) -> List[Resource]:
+def get_note_resources(note: JoplinNote) -> List[Resource]:
     resources = get_items(NOTES_RESOURCES_API_URL.format(note_id=note['id']))
     return resources
 

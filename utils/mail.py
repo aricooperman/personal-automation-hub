@@ -124,7 +124,7 @@ def get_title_from_subject(s):
         return title
 
 
-def get_tags_from_subject(s):
+def get_tags_from_subject(s) -> list[str]:
     s = re.findall(r"\s+(?:#)([\w\-_]+)", s)
     return s
 
