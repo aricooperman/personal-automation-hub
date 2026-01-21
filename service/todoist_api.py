@@ -14,7 +14,7 @@ api = TodoistAPI(token)
 
 
 def get_all_projects() -> list[Project]:
-    return api.get_projects()
+    return [project for projects in api.get_projects() for project in projects]
 
 
 def get_active_projects() -> list[Project]:
@@ -30,15 +30,15 @@ def create_project(proj_name: str) -> Project:
 
 
 def get_project_sections(project: Project) -> list[Section]:
-    return api.get_sections(project_id=project.id)
+    return [section for sections in api.get_sections(project_id=project.id) for section in sections]
 
 
 def get_project_tasks(project: Project) -> list[Task]:
-    return api.get_tasks(project_id=project.id)
+    return [task for tasks in api.get_tasks(project_id=project.id) for task in tasks]
 
 
 def get_labels() -> list[Label]:
-    return api.get_labels()
+    return [label for labels in api.get_labels() for label in labels]
 
 
 def get_label(label_name: str) -> Optional[Label]:
@@ -50,7 +50,7 @@ def get_label(label_name: str) -> Optional[Label]:
 
 
 def get_tasks_with_label(label: Label) -> list[Task]:
-    return api.get_tasks(label=label.name)
+    return [task for tasks in api.get_tasks(label=label.name) for task in tasks]
 
 
 def add_task(content: str, due: str = None, labels: list[str] = None, project: Project = None):
@@ -60,11 +60,12 @@ def add_task(content: str, due: str = None, labels: list[str] = None, project: P
 
 def complete_task(task: Task) -> None:
     if not task.is_completed:
-        api.close_task(task.id)
+        api.complete_task(task.id)
 
 
 def get_task_comments(task: Task) -> list[Comment]:
-    return api.get_comments(task_id=task.id)
+    return [comment for comments in api.get_comments(task_id=task.id) for comment in comments]
+
 
 
 def get_task(item_id: str) -> Task:
