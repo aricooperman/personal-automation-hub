@@ -516,7 +516,7 @@ def tag_note(note, tag_name):
     tag = get_tag(tag_name, auto_create=True)
     if not tag:
         print(f"No tag found with name {tag_name}")
-        return
+        return None
 
     note_tag_relation = post_item(TAG_NOTE_API_URL.format(tag_id=tag['id']), {'id': note['id']})
     return note_tag_relation

@@ -5,7 +5,7 @@ from typing import Optional
 import markdown
 import requests
 from todoist_api_python.api import TodoistAPI
-from todoist_api_python.models import Project, Label, Task, Comment, Section
+from todoist_api_python.models import Project, Label, Task, Comment, Section, Attachment
 
 from configuration import todoist_configs
 
@@ -74,7 +74,7 @@ def get_task(item_id: str) -> Task:
 
 def add_file_comment(task: Task, file_bytes, file_name: str, file_type) -> Comment:
     data = {"token": token, 'file_name': file_name, 'file_type': file_type}
-    url = "https://api.todoist.com/sync/v9/uploads/add"
+    url = "https://api.todoist.com/api/v1/uploads"
     with BytesIO(file_bytes) as file_data:
         response = requests.post(url, data=data, files={"file": file_data}, headers={"Authorization": f"Bearer {token}"})
         if response.status_code != requests.codes.ok:
@@ -82,7 +82,22 @@ def add_file_comment(task: Task, file_bytes, file_name: str, file_type) -> Comme
                 f"Received bad status code ({response.status_code} in post response for {response.request}")
         file_upload = response.json()
         content = file_name if file_name else "no_name"
-        return api.add_comment(task_id=task.id, content=content, attachment=file_upload)
+
+        attachment = Attachment()
+        attachment.file_name = content
+        attachment.file_size = file_upload['file_size'] if 'file_size' in file_upload else None
+        attachment.file_type = file_upload['file_type'] if 'file_type' in file_upload else None
+        attachment.file_url = file_upload['file_url'] if 'file_url' in file_upload else None
+        attachment.image = file_upload['image'] if 'image' in file_upload else None
+        attachment.image_height = file_upload['image_height'] if 'image_height' in file_upload else None
+        attachment.image_width = file_upload['image_width'] if 'image_width' in file_upload else None
+        attachment.resource_type = file_upload['resource_type'] if 'resource_type' in file_upload else None
+        attachment.upload_state = file_upload['upload_state'] if 'upload_state' in file_upload else None
+        attachment.file_duration = file_upload['file_duration'] if 'file_duration' in file_upload else None
+        attachment.url = file_upload['url'] if 'url' in file_upload else None
+        attachment.title = file_upload['title'] if 'title' in file_upload else None
+
+        return api.add_comment(task_id=task.id, content=content, attachment=attachment)
 
 
 def add_comment(task: Task, comment: str) -> Comment:
