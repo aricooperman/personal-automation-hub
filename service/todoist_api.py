@@ -1,4 +1,5 @@
 import re
+import uuid
 from io import BytesIO
 from typing import Optional
 
@@ -73,13 +74,17 @@ def get_task(item_id: str) -> Task:
 
 
 def add_file_comment(task: Task, file_bytes, file_name: str, file_type) -> Comment:
-    data = {"token": token, 'file_name': file_name, 'file_type': file_type}
     url = "https://api.todoist.com/api/v1/uploads"
     with BytesIO(file_bytes) as file_data:
-        response = requests.post(url, data=data, files={"file": file_data}, headers={"Authorization": f"Bearer {token}"})
+        response = requests.post(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            files={"file": (file_name, file_data, file_type)},
+        )
         if response.status_code != requests.codes.ok:
             raise RuntimeError(
                 f"Received bad status code ({response.status_code} in post response for {response.request}")
+
         file_upload = response.json()
         content = file_name if file_name else "no_name"
 
@@ -93,7 +98,7 @@ def add_file_comment(task: Task, file_bytes, file_name: str, file_type) -> Comme
         attachment.image_width = file_upload['image_width'] if 'image_width' in file_upload else None
         attachment.resource_type = file_upload['resource_type'] if 'resource_type' in file_upload else None
         attachment.upload_state = file_upload['upload_state'] if 'upload_state' in file_upload else None
-        attachment.file_duration = file_upload['file_duration'] if 'file_duration' in file_upload else None
+        attachment.file_duration = file_upload['file_duration'] if 'file_duration' in file_upload else 0
         attachment.url = file_upload['url'] if 'url' in file_upload else None
         attachment.title = file_upload['title'] if 'title' in file_upload else None
 
