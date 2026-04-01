@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from typing import TypedDict, List, Optional, IO, Dict
+from typing import TypedDict, List, Optional, IO, Any
 
 import requests
 
@@ -163,7 +163,7 @@ def post_item(url, payload, params=None):
     return response.json()
 
 
-def delete_item(url: str, payload=None, params: dict = None) -> any:
+def delete_item(url: str, payload=None, params: dict = None) -> Any | None:
     if params is None:
         params = get_default_params()
 
@@ -191,7 +191,7 @@ def create_notebook(notebook_name):
     return notebook
 
 
-def create_new_note(title: str, body: str, notebook_id: Optional[int] = None, is_html: bool = False, creation_time=None,
+def create_new_note(title: str, body: Optional[str] = None, notebook_id: Optional[int] = None, is_html: bool = False, creation_time=None,
                     due_date=None) -> JoplinNote:
     payload = {'title': title}
     if body is not None and len(body) > 0:

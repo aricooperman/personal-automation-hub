@@ -6,14 +6,12 @@ from email.message import EmailMessage
 from io import BytesIO, StringIO
 from typing import List
 
-import dateutil.parser
-import pytz
 from todoist_api_python.models import Comment
 
 import service
 from configuration import joplin_configs, mail_configs, kindle_configs, todoist_configs, trello_configs, \
     obsidian_configs
-from constants import LOCAL_TZ, DEFAULT_TZ
+from constants import LOCAL_TZ
 from enums import MimeType
 from service import obsidian_api
 from service.joplin_api import JoplinNote
@@ -136,7 +134,7 @@ def add_email_attachments_to_obsidian_note(email_message, path: str, filename: s
     for part in email_message.iter_attachments():
         content_type = part.get_content_type()
         if part.is_multipart():
-            add_email_attachments_to_obsidian_note(part, path)
+            add_email_attachments_to_obsidian_note(part, path, filename)
         else:
             attachment_name = part.get_filename(failobj="unknown_file_name")
             part_type = determine_mime_type(attachment_name, content_type)
@@ -242,7 +240,7 @@ def send_notes_to_todoist_from_joplin(notes: List[service.joplin_api.JoplinNote]
         due = None
         if 'todo_due' in note and note['todo_due'] > 0:
             dt = datetime.datetime.fromtimestamp(note['todo_due'] / 1000.0, tz=datetime.timezone.utc)
-            due = dt.astimezone(LOCAL_TZ).strftime('%Y-%m-%dT%H:%M:%S')
+            due = dt.astimezone(LOCAL_TZ)
 
         content = note['title']
         if len(note['source_url']) > 0:
@@ -371,7 +369,7 @@ def process_todoist_joplin_tag():
     mapping = joplin_service_configs['tag-mapping']
 
     todoist_label = get_label(mapping[0])
-    tasks = get_tasks_with_label(todoist_label)
+    tasks = [] if todoist_label is None else get_tasks_with_label(todoist_label)
 
     if len(tasks) > 0:
         todoist_joplin_tag = service.joplin_api.get_tag(mapping[1], auto_create=True)
@@ -386,11 +384,12 @@ def process_todoist_joplin_tag():
 
             body = task.description if task.description is not None and len(task.description) > 0 else None
             due = None
-            if task.due is not None and (task.due.date is not None or task.due.datetime is not None):
-                dt = dateutil.parser.isoparse(task.due.datetime if task.due.datetime is not None else task.due.date)
-                tz = task.due.timezone if task.due.timezone is not None else DEFAULT_TZ
-                dt = dt.astimezone(pytz.timezone(tz))
-                due = int(dt.strftime('%s')) * 1000
+            if task.due is not None: # and (task.due.date is not None or task.due.datetime is not None):
+                raise RuntimeError("Need to investigate Due type")
+                # dt = task.due.datetime if task.due.datetime is not None else dateutil.parser.isoparse(task.due.date)
+                # tz = task.due.timezone if task.due.timezone is not None else DEFAULT_TZ
+                # dt = dt.astimezone(pytz.timezone(tz))
+                # due = int(dt.strftime('%s')) * 1000
 
             joplin_note = service.joplin_api.create_new_note(task.content, body, notebook_id=None, is_html=True, due_date=due)
 

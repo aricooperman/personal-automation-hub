@@ -1,5 +1,6 @@
 import re
 import uuid
+from datetime import datetime
 from io import BytesIO
 from typing import Optional
 
@@ -54,7 +55,7 @@ def get_tasks_with_label(label: Label) -> list[Task]:
     return [task for tasks in api.get_tasks(label=label.name) for task in tasks]
 
 
-def add_task(content: str, due: str = None, labels: list[str] = None, project: Project = None):
+def add_task(content: str, due: datetime = None, labels: list[str] = None, project: Project = None):
     project_id = project.id if project else None
     return api.add_task(content, due_datetime=due, labels=labels, project_id=project_id)
 
